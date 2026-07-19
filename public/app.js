@@ -799,11 +799,17 @@ function curveValue(table, ageMo, z) {
 }
 
 function fmtPercentile(p) {
-  if (p < 1) return '<1st'
-  if (p > 99) return '>99th'
+  // Above P95 / below P5 a whole number hides real movement (99.1 vs 99.9
+  // matters out there), so the tails get one decimal.
+  if (p < 0.1) return '<0.1st'
+  if (p > 99.9) return '>99.9th'
+  const tail = Math.round(p) <= 5 || Math.round(p) >= 95
+  const str = tail ? p.toFixed(1) : String(Math.round(p))
   const n = Math.round(p)
-  const suffix = n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'
-  return `${n}${suffix}`
+  const last = tail ? Number(str.at(-1)) : n % 10
+  const teen = !tail && n % 100 >= 11 && n % 100 <= 13
+  const suffix = teen ? 'th' : last === 1 ? 'st' : last === 2 ? 'nd' : last === 3 ? 'rd' : 'th'
+  return `${str}${suffix}`
 }
 
 const PCT_LINES = [
