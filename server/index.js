@@ -204,6 +204,68 @@ app.get('/api/events', requireAuth, (req, res) => {
   res.json(db.prepare(`SELECT * FROM events ${where} ORDER BY occurred_at DESC LIMIT ?`).all(...params, limit))
 })
 
+// Fun auto-milestones computed from the full history (Nth diaper, weight
+// comparisons). Never stored — recomputed on demand, so edits and deletions
+// self-correct. Thresholds are spaced to land roughly weekly at newborn pace
+// and thin out from there.
+const COUNT_MILESTONES = [100, 500, 1000, 2500, 5000, 10000]
+const WEIGHT_COMPARISONS = [
+  [3600, 'a gallon of milk 🥛'], // ~8 lb
+  [4100, 'a house cat 🐱'], // ~9 lb
+  [4500, 'a bowling ball 🎳'], // ~10 lb
+  [5900, 'a pumpkin 🎃'], // ~13 lb
+  [7300, 'a Thanksgiving turkey 🦃'], // ~16 lb
+  [9000, 'a watermelon 🍉'], // ~20 lb
+  [11800, 'a car tire 🛞'], // ~26 lb
+]
+
+app.get('/api/milestones/auto', requireAuth, (req, res) => {
+  const name = process.env.BABY_NAME || 'Baby'
+  const rows = db
+    .prepare(
+      `SELECT type, occurred_at, kind, weight_g, photo_path FROM events
+       WHERE type IN ('diaper','breastfeed','formula','weight','photo') ORDER BY occurred_at ASC`
+    )
+    .all()
+  const out = []
+  const counts = { diaper: 0, poop: 0, feed: 0, photo: 0 }
+  const nouns = { diaper: 'diaper logged 🧷', poop: 'poopy diaper 💩', feed: 'feed 🍼', photo: 'photo captured 📷' }
+  // Photos accrue slower than diapers/feeds, so they get earlier thresholds.
+  const thresholds = { photo: [50, 250, 1000] }
+  const bump = (key, occurred_at) => {
+    counts[key]++
+    if ((thresholds[key] || COUNT_MILESTONES).includes(counts[key]))
+      out.push({ occurred_at, label: `${counts[key]}th ${nouns[key]}` })
+  }
+  let firstWeight = null
+  let doubled = false
+  let compIdx = 0
+  for (const e of rows) {
+    if (e.photo_path) bump('photo', e.occurred_at) // standalone photos and ones attached to events
+    if (e.type === 'diaper') {
+      bump('diaper', e.occurred_at)
+      if (e.kind === 'poop' || e.kind === 'both') bump('poop', e.occurred_at)
+    } else if (e.type === 'breastfeed' || e.type === 'formula') {
+      bump('feed', e.occurred_at)
+    } else if (e.type === 'weight' && e.weight_g) {
+      if (firstWeight == null) firstWeight = e.weight_g
+      else if (!doubled && e.weight_g >= 2 * firstWeight) {
+        doubled = true
+        out.push({ occurred_at: e.occurred_at, label: `${name} has doubled their birth weight! ⚖️` })
+      }
+      // One weigh-in can cross several rungs (sparse weigh-ins); only the
+      // highest reads naturally, so skip the ones blown past.
+      let crossed = null
+      while (compIdx < WEIGHT_COMPARISONS.length && e.weight_g >= WEIGHT_COMPARISONS[compIdx][0]) {
+        crossed = WEIGHT_COMPARISONS[compIdx][1]
+        compIdx++
+      }
+      if (crossed) out.push({ occurred_at: e.occurred_at, label: `${name} now weighs as much as ${crossed}` })
+    }
+  }
+  res.json(out)
+})
+
 // Last time each type was logged — shown on the log buttons to prevent
 // double-logging (two parents, no live sync).
 app.get('/api/events/latest', requireAuth, (req, res) => {

@@ -58,6 +58,16 @@
       </section>
 
       <section id="view-timeline" class="view hidden">
+        <div class="filter-row" id="timeline-filter">
+          <button class="filter-chip active" data-filter="">All</button>
+          <button class="filter-chip" data-filter="breastfeed">🤱</button>
+          <button class="filter-chip" data-filter="formula">🍼</button>
+          <button class="filter-chip" data-filter="diaper">💧💩</button>
+          <button class="filter-chip" data-filter="weight">⚖️</button>
+          <button class="filter-chip" data-filter="height">📏</button>
+          <button class="filter-chip" data-filter="photo">📷</button>
+          <button class="filter-chip" data-filter="milestone">🌟</button>
+        </div>
         <div id="timeline"></div>
         <button id="load-more" class="ghost-btn hidden">Load older entries</button>
       </section>
@@ -81,6 +91,7 @@
 
   <div id="sheet-backdrop" class="sheet-backdrop hidden">
     <div id="sheet" class="sheet">
+      <button type="button" id="sheet-close" class="sheet-close" aria-label="Close">✕</button>
       <h2 id="sheet-title"></h2>
       <form id="sheet-form"></form>
     </div>

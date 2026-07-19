@@ -173,6 +173,8 @@ $('#sheet-backdrop').addEventListener('click', (e) => {
   if (e.target === $('#sheet-backdrop')) closeSheet()
 })
 
+$('#sheet-close').addEventListener('click', closeSheet)
+
 function fieldTime(value) {
   return `<label>Time<input type="datetime-local" name="occurred_at" value="${value}" required></label>`
 }
@@ -514,27 +516,55 @@ function ageMarkers(afterIso, beforeIso) {
   const birth = new Date(`${cfg.birthDate}T12:00:00`)
   if (Number.isNaN(birth.getTime())) return []
   const now = new Date()
+  const name = cfg.babyName
   const markers = []
-  const add = (d, ageLabel) => {
+  const add = (d, label) => {
     if (d > now) return
     // Pin to the end of its day so it sorts to the top of that day's group.
     const at = new Date(d)
     at.setHours(23, 59, 59, 999)
     const iso = at.toISOString()
     if (iso <= afterIso || iso > beforeIso) return
-    markers.push({ type: '_marker', occurred_at: iso, label: `${cfg.babyName} is ${ageLabel} old!` })
+    markers.push({ type: '_marker', occurred_at: iso, label })
   }
   for (const w of [1, 2, 3]) {
     const d = new Date(birth)
     d.setDate(d.getDate() + w * 7)
-    add(d, `${w} week${w === 1 ? '' : 's'}`)
+    add(d, `${name} is ${w} week${w === 1 ? '' : 's'} old!`)
   }
   for (let m = 1; m <= 24; m++) {
     const d = new Date(birth.getFullYear(), birth.getMonth() + m, birth.getDate(), 12)
     if (d.getDate() !== birth.getDate()) d.setDate(0) // month overflow: clamp to last day
-    add(d, m % 12 === 0 ? `${m / 12} year${m === 12 ? '' : 's'}` : `${m} month${m === 1 ? '' : 's'}`)
+    add(d, `${name} is ${m % 12 === 0 ? `${m / 12} year${m === 12 ? '' : 's'}` : `${m} month${m === 1 ? '' : 's'}`} old!`)
+  }
+  // The odd-unit ones land between the calendar markers — little surprises.
+  const HOUR = 3600000
+  for (const [ms, label] of [
+    [100 * 24 * HOUR, `${name} is 100 days old! 💯`],
+    [1000 * HOUR, `${name} is 1,000 hours old! ⏰`],
+    [10000 * HOUR, `${name} is 10,000 hours old! ⏰`],
+    [1000000 * 60000, `${name} is 1,000,000 minutes old! 🤯`],
+  ]) {
+    add(new Date(birth.getTime() + ms), label)
   }
   return markers
+}
+
+// Data-driven fun milestones (Nth diaper, weight comparisons, …) computed
+// server-side from the full history. Cached per refresh cycle.
+let autoMilestones = null
+
+async function funMilestones(afterIso, beforeIso) {
+  if (autoMilestones == null) {
+    try {
+      autoMilestones = await api('/api/milestones/auto')
+    } catch {
+      autoMilestones = []
+    }
+  }
+  return autoMilestones
+    .filter((m) => m.occurred_at > afterIso && m.occurred_at <= beforeIso)
+    .map((m) => ({ type: '_marker', occurred_at: m.occurred_at, label: m.label }))
 }
 
 function renderTimeline(events, { append = false } = {}) {
@@ -562,17 +592,35 @@ function renderTimeline(events, { append = false } = {}) {
   container.dataset.lastDay = lastDay || ''
 }
 
+let timelineFilter = ''
+
+$('#timeline-filter').onclick = (ev) => {
+  const chip = ev.target.closest('.filter-chip')
+  if (!chip) return
+  timelineFilter = chip.dataset.filter
+  document.querySelectorAll('.filter-chip').forEach((c) => c.classList.toggle('active', c === chip))
+  timelineOldest = null
+  loadTimeline()
+}
+
 async function loadTimeline({ append = false } = {}) {
+  const typeParam = timelineFilter ? `&type=${timelineFilter}` : ''
   const url = append && timelineOldest
-    ? `/api/events?limit=${PAGE_SIZE}&before=${encodeURIComponent(timelineOldest)}`
-    : `/api/events?limit=${PAGE_SIZE}`
+    ? `/api/events?limit=${PAGE_SIZE}${typeParam}&before=${encodeURIComponent(timelineOldest)}`
+    : `/api/events?limit=${PAGE_SIZE}${typeParam}`
   const events = await api(url)
   const upper = append && timelineOldest ? timelineOldest : '9999'
   if (events.length) timelineOldest = events[events.length - 1].occurred_at
   // On the last page there is no lower cutoff — show any older markers too.
   const lower = events.length === PAGE_SIZE ? timelineOldest : ''
-  const merged = [...events, ...ageMarkers(lower, upper)]
-    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+  // Markers stay out of single-type views, except the milestone filter,
+  // where the auto ones belong.
+  const showMarkers = !timelineFilter || timelineFilter === 'milestone'
+  const merged = [
+    ...events,
+    ...(showMarkers ? ageMarkers(lower, upper) : []),
+    ...(showMarkers ? await funMilestones(lower, upper) : []),
+  ].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
   renderTimeline(merged, { append })
   $('#load-more').classList.toggle('hidden', events.length < PAGE_SIZE)
   if (!append && !events.length) {
@@ -1266,6 +1314,7 @@ function switchView(name) {
 }
 
 function refreshAll() {
+  autoMilestones = null // new logs can cross a fun-milestone threshold
   const active = document.querySelector('.nav-btn.active').dataset.view
   views[active]()
 }

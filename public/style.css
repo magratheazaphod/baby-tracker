@@ -7,6 +7,7 @@
   --surface: #ffffff;
   --accent: #6d28d9;
   --accent-soft: #ede9fe;
+  --on-accent: #ffffff;
   --text: #1c1726;
   --text-2: #5b5468;
   --muted: #8d8798;
@@ -32,6 +33,7 @@
     --surface: #211d2e;
     --accent: #a78bfa;
     --accent-soft: #322a4a;
+    --on-accent: #211d2e;
     --text: #f2effa;
     --text-2: #b6afc4;
     --muted: #8d8798;
@@ -54,6 +56,7 @@
   --surface: #211d2e;
   --accent: #a78bfa;
   --accent-soft: #322a4a;
+  --on-accent: #211d2e;
   --text: #f2effa;
   --text-2: #b6afc4;
   --muted: #8d8798;
@@ -313,12 +316,29 @@ nav {
   align-items: flex-end;
 }
 .sheet {
+  position: relative;
   width: 100%;
   background: var(--surface);
   border-radius: 20px 20px 0 0;
   padding: 20px 20px calc(env(safe-area-inset-bottom) + 20px);
   max-height: 85dvh;
   overflow-y: auto;
+}
+.sheet-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--text-2);
+  background: var(--accent-soft);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
 }
 .sheet h2 { font-size: 19px; margin-bottom: 16px; }
 .sheet form { display: flex; flex-direction: column; gap: 14px; }
@@ -399,6 +419,29 @@ nav {
   color: var(--muted);
 }
 .bm-share { color: var(--muted); font-size: 12px; }
+.filter-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.filter-chip {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.filter-chip.active {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
 .lightbox {
   position: fixed;
   inset: 0;
