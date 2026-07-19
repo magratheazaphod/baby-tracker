@@ -81,7 +81,8 @@ body {
   color: var(--text);
 }
 .login-users { display: flex; flex-direction: column; gap: 10px; }
-.login-users button {
+.login-users button,
+#login-continue {
   font-size: 17px;
   font-weight: 600;
   padding: 14px;

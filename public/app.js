@@ -116,21 +116,48 @@ function fmtDur(ms) {
 function showLogin() {
   $('#app').classList.add('hidden')
   $('#login').classList.remove('hidden')
-  if (cfg?.appName) $('.login-card h1').textContent = cfg.appName
   const usersEl = $('#login-users')
-  usersEl.innerHTML = ''
-  for (const name of cfg?.users || []) {
-    const btn = document.createElement('button')
-    btn.textContent = `I'm ${name}`
-    btn.onclick = async () => {
-      try {
-        await api('/api/login', { method: 'POST', json: { secret: $('#login-secret').value, user: name } })
-        location.reload()
-      } catch (err) {
-        $('#login-error').textContent = err.message
+  const errEl = $('#login-error')
+  const contBtn = $('#login-continue')
+
+  const post = async (body) => {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Login failed')
+    return data
+  }
+
+  // Step 1: prove the secret; only then does the server reveal the name list.
+  const probe = async () => {
+    errEl.textContent = ''
+    try {
+      const { users } = await post({ secret: $('#login-secret').value })
+      contBtn.classList.add('hidden')
+      usersEl.innerHTML = ''
+      for (const name of users) {
+        const btn = document.createElement('button')
+        btn.textContent = `I'm ${name}`
+        btn.onclick = async () => {
+          try {
+            await post({ secret: $('#login-secret').value, user: name })
+            location.reload()
+          } catch (err) {
+            errEl.textContent = err.message
+          }
+        }
+        usersEl.appendChild(btn)
       }
+    } catch (err) {
+      errEl.textContent = err.message
     }
-    usersEl.appendChild(btn)
+  }
+  contBtn.onclick = probe
+  $('#login-secret').onkeydown = (e) => {
+    if (e.key === 'Enter') probe()
   }
 }
 

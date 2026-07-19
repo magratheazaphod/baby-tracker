@@ -57,9 +57,32 @@ function currentUser(req) {
   return verifyCookie(parseCookies(req).bt_auth)
 }
 
-app.post('/api/login', (req, res) => {
+function secretOk(candidate) {
+  const a = crypto.createHash('sha256').update(String(candidate ?? '')).digest()
+  const b = crypto.createHash('sha256').update(APP_SECRET).digest()
+  return crypto.timingSafeEqual(a, b)
+}
+
+// Brute-force guard on login: per-IP attempt budget per window.
+const loginAttempts = new Map()
+function loginRateLimit(req, res, next) {
+  const ip = req.headers['fly-client-ip'] || req.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  if (loginAttempts.size > 10000) loginAttempts.clear()
+  let rec = loginAttempts.get(ip)
+  if (!rec || now > rec.reset) rec = { count: 0, reset: now + 15 * 60 * 1000 }
+  rec.count++
+  loginAttempts.set(ip, rec)
+  if (rec.count > 20) return res.status(429).json({ error: 'Too many attempts — try again in a bit' })
+  next()
+}
+
+// Two-step login so nothing personal is served before the secret is proven:
+// {secret} alone validates and returns the name list; {secret, user} sets the cookie.
+app.post('/api/login', loginRateLimit, (req, res) => {
   const { secret, user } = req.body || {}
-  if (secret !== APP_SECRET) return res.status(401).json({ error: 'Wrong secret' })
+  if (!secretOk(secret)) return res.status(401).json({ error: 'Wrong secret' })
+  if (user === undefined) return res.json({ users: USER_NAMES })
   if (!USER_NAMES.includes(user)) return res.status(400).json({ error: 'Unknown user' })
   res.setHeader(
     'Set-Cookie',
@@ -69,6 +92,7 @@ app.post('/api/login', (req, res) => {
 })
 
 app.get('/api/config', (req, res) => {
+  if (!currentUser(req)) return res.json({ user: null })
   res.json({
     users: USER_NAMES,
     user: currentUser(req),
@@ -312,8 +336,16 @@ app.post('/api/push/test', requireAuth, async (req, res) => {
 
 // Manifest is rendered dynamically so BABY_NAME (private, env-only) can label
 // the home-screen app without ever being committed to the repo.
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send('User-agent: *\nDisallow: /\n')
+})
+
 app.get('/manifest.webmanifest', (req, res) => {
-  const name = process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker'
+  // Real name only for logged-in fetches (the manifest link uses use-credentials);
+  // anonymous crawlers see a generic label.
+  const name = currentUser(req)
+    ? process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker'
+    : 'Baby Tracker'
   res.type('application/manifest+json').json({
     name,
     short_name: name,
