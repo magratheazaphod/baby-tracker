@@ -18,6 +18,7 @@
   --c-pee: #eda100;
   --c-poop: #008300;
   --c-weight: #4a3aa7;
+  --c-feed: #d55181; /* feed markers drawn on top of sleep bands */
   --grid: #e6e2ef;
 }
 
@@ -42,6 +43,7 @@
     --c-pee: #c98500;
     --c-poop: #008300;
     --c-weight: #9085e9;
+    --c-feed: #e87ba4;
     --grid: #322d42;
   }
 }
@@ -62,6 +64,7 @@
   --c-pee: #c98500;
   --c-poop: #008300;
   --c-weight: #9085e9;
+  --c-feed: #e87ba4;
   --grid: #322d42;
 }
 :root[data-theme="light"] {

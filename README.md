@@ -73,7 +73,7 @@ Three layers:
 | `BABY_NAME` | `Baby` | baby's name (private, env-only) |
 | `APP_NAME` | falls back to `BABY_NAME` | app title + home-screen name |
 | `BIRTH_DATE` | unset | baby's birth date (YYYY-MM-DD); enables growth percentiles |
-| `BABY_SEX` | unset | `boy` or `girl`; selects the CDC growth-curve table |
+| `BABY_SEX` | unset | `boy` or `girl`; selects the WHO growth-standards table |
 | `HOME_TZ` | `America/Los_Angeles` | day boundaries for reports |
 | `NUDGE_HOURS` | `6` | push a nudge after this many hours with no entries |
 | `RENUDGE_MINUTES` | `60` | re-nudge interval while still quiet |

@@ -44,10 +44,12 @@ timer. No framework, no bundler, no test suite (yet) — verification is manual.
   for `NUDGE_HOURS` (default 6) → push all subscriptions, re-nudge hourly,
   state in `meta` table.
 - `public/app.js` — views (log / timeline / reports / sleep), bottom-sheet
-  form builder, hand-rolled SVG charts, CDC growth percentiles (LMS math),
+  form builder, hand-rolled SVG charts, WHO growth percentiles (LMS math),
   sleep-interval inference, theme toggle, push subscribe.
-- `public/growth-curves.js` — CDC LMS tables, both sexes; table picked at
-  runtime from `BABY_SEX`.
+- `public/growth-curves.js` — WHO 0-24mo LMS tables (daily resolution early),
+  both sexes; table picked at runtime from `BABY_SEX`. WHO (not CDC 2000) is
+  deliberate: it's what US pediatricians use under age 2 — parents compare
+  the app's percentiles to doctor visits.
 - `public/sw.js` — network-first service worker + push/notificationclick.
 
 ## Key patterns
@@ -71,9 +73,10 @@ timer. No framework, no bundler, no test suite (yet) — verification is manual.
 - **Theme**: light/dark via CSS vars; dark block duplicated for the OS media
   query and `data-theme="dark"` override — keep both in sync.
 - **Sleep view**: asleep-between-feeds inference; awake overrides stored as
-  `awake_after` on the feed event *preceding* the interval. Gaps between
-  consecutive feeds of *different* types (breastfeed ↔ formula = one combined
-  session) are always awake and not toggleable — explicit parent feedback.
+  `awake_after` on the feed event *preceding* the interval. A formula feed
+  within 1h after a breastfeed is a top-up (they always breastfeed first,
+  supplement if needed): that gap is always awake and not toggleable —
+  explicit parent feedback. Other gaps default asleep, tap to flip.
 
 ## Local dev & verification
 

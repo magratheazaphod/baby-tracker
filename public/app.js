@@ -576,7 +576,7 @@ function barChart(days, seriesKeys, valueOf, fmtVal) {
   </svg>`
 }
 
-// ---------- growth percentiles (CDC girls 0-36mo LMS, see growth-curves.js) ----------
+// ---------- growth percentiles (WHO 0-24mo LMS, see growth-curves.js) ----------
 
 function lmsAt(table, ageMo) {
   const a = Math.max(table[0][0], Math.min(ageMo, table[table.length - 1][0]))
@@ -853,7 +853,7 @@ async function loadReports() {
       ${lastH ? `<div class="tile"><div class="tile-label">📏 Height percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.length, lastH.ageMo, lastH.value))}</div><div class="tile-sub">${fmtHeight(lastH.value)}</div></div>` : ''}
     </div>`
 
-    const curveLabel = `on CDC ${cfg.babySex}s’ growth curves (3rd–97th percentile) — tap a dot for the exact percentile`
+    const curveLabel = `on WHO ${cfg.babySex}s’ growth standards (3rd–97th percentile) — tap a dot for the exact percentile`
     if (wg.length) {
       growthHtml += chartCard('Weight', curveLabel, [],
         growthChart(wg, GROWTH_LMS.weight, 'var(--c-weight)', (kg) => fmtW(kg * 1000)))
@@ -947,11 +947,11 @@ async function loadSleep() {
     const nextStart = next ? t(next.occurred_at) : null
     segs.push([start, Math.min(winEnd, nextStart ?? now)])
     if (next && nextStart > winEnd) {
-      // A breastfeed next to a formula feed is one combined feeding session —
-      // the baby never goes back down in between, so that gap is always awake.
-      const mixed = next.type !== f.type
-      gaps.push({ start: winEnd, end: nextStart, feedId: f.id, awake: !!f.awake_after, locked: mixed })
-      if (mixed || f.awake_after) segs.push([winEnd, nextStart])
+      // Formula shortly after a breastfeed is a top-up — one continuous awake
+      // session, the baby has no time to go back down in between.
+      const topUp = f.type === 'breastfeed' && next.type === 'formula' && nextStart - winEnd <= 60 * 60000
+      gaps.push({ start: winEnd, end: nextStart, feedId: f.id, awake: !!f.awake_after, locked: topUp })
+      if (topUp || f.awake_after) segs.push([winEnd, nextStart])
     }
   })
   segs.sort((a, b) => a[0] - b[0])
@@ -1022,7 +1022,7 @@ async function loadSleep() {
     }
     for (const f of feeds) {
       const ft = t(f.occurred_at)
-      if (ft >= r.ds && ft < r.de) svg += `<line x1="${x(r, ft).toFixed(1)}" y1="${y}" x2="${x(r, ft).toFixed(1)}" y2="${y + rowH}" stroke="var(--surface)" stroke-width="2"/>`
+      if (ft >= r.ds && ft < r.de) svg += `<line x1="${x(r, ft).toFixed(1)}" y1="${y - 1.5}" x2="${x(r, ft).toFixed(1)}" y2="${y + rowH + 1.5}" stroke="var(--c-feed)" stroke-width="2"/>`
     }
     gaps.forEach((g, gi) => {
       const cs = Math.max(g.start, r.ds)
@@ -1038,11 +1038,11 @@ async function loadSleep() {
     </div>
     <div class="chart-card">
       <h3>Sleep by day</h3>
-      <div class="chart-sub">assumes asleep between feedings (breastfeeding ↔ formula gaps count as awake) — tap a stretch to flip it</div>
+      <div class="chart-sub">assumes asleep between feedings (a formula top-up within an hour of breastfeeding counts as awake) — tap a stretch to flip it</div>
       <div class="legend">
         <span><i style="background:${SLEEP_COLORS.asleep}"></i>Asleep</span>
         <span><i style="background:${SLEEP_COLORS.awake}"></i>Awake</span>
-        <span><i style="background:var(--muted);width:2px;border-radius:0"></i>Feeding</span>
+        <span><i style="background:var(--c-feed);width:3px;border-radius:0"></i>Feeding</span>
       </div>
       <svg class="chart-svg" viewBox="0 0 ${W} ${H}"></svg>
     </div>`
@@ -1052,7 +1052,7 @@ async function loadSleep() {
     if (!target) return
     const g = gaps[Number(target.dataset.gap)]
     if (g.locked) {
-      toast('Breastfeeding ↔ formula gaps always count as awake')
+      toast('Breastfeeding → formula top-ups count as awake')
       return
     }
     try {
