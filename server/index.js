@@ -1,11 +1,12 @@
 import express from 'express'
 import multer from 'multer'
 import sharp from 'sharp'
+import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, PHOTOS_DIR } from './db.js'
+import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
 import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -298,6 +299,39 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
     }
   }
   res.json({ days: [...byDay.values()], weights, heights })
+})
+
+// --- backup export ---
+
+// Accepts the login cookie OR the shared secret as a bearer token, so a cron
+// job can pull backups without a browser session.
+function exportAuth(req, res, next) {
+  if (currentUser(req)) return next()
+  const auth = req.headers.authorization
+  if (auth?.startsWith('Bearer ') && secretOk(auth.slice(7))) return next()
+  res.status(401).json({ error: 'Not logged in' })
+}
+
+app.get('/api/export', exportAuth, async (req, res) => {
+  const tmpDb = path.join(DATA_DIR, 'export-db.sqlite')
+  try {
+    await db.backup(tmpDb) // consistent point-in-time copy, safe while live
+  } catch (err) {
+    console.error('export backup failed:', err)
+    return res.status(500).json({ error: 'Backup failed' })
+  }
+  res.setHeader('Content-Type', 'application/gzip')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="baby-tracker-${new Date().toISOString().slice(0, 10)}.tar.gz"`
+  )
+  const tar = spawn('tar', ['czf', '-', '-C', DATA_DIR, 'export-db.sqlite', 'photos'])
+  tar.stdout.pipe(res)
+  tar.on('error', (err) => {
+    console.error('export tar failed:', err)
+    res.destroy()
+  })
+  tar.on('close', () => fs.rm(tmpDb, { force: true }, () => {}))
 })
 
 // --- sleep ---

@@ -47,6 +47,23 @@ fly deploy --ha=false
 Then on each iPhone: open the app URL in Safari → Share → **Add to Home
 Screen** → open it from the home screen → log in → tap 🔔 to enable nudges.
 
+## Backups
+
+Three layers:
+
+1. **Fly volume snapshots** — automatic, daily, 30-day retention
+   (`fly volumes update <vol-id> --snapshot-retention 30`). Restore with
+   `fly volumes create data --snapshot-id <id>`.
+2. **Off-site export** — `GET /api/export` streams a tar.gz of the SQLite
+   database + all photos. Authenticated by login cookie or
+   `Authorization: Bearer <APP_SECRET>`.
+3. **Pull script** — `scripts/backup.sh` downloads an export and keeps the
+   newest 30 locally:
+   ```sh
+   APP_URL=https://your-app.fly.dev APP_SECRET=... ./scripts/backup.sh
+   ```
+   Run it on a schedule (cron/launchd) for continuous off-site copies.
+
 ## Environment variables
 
 | Var | Default | Purpose |
