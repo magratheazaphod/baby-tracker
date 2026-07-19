@@ -947,8 +947,11 @@ async function loadSleep() {
     const nextStart = next ? t(next.occurred_at) : null
     segs.push([start, Math.min(winEnd, nextStart ?? now)])
     if (next && nextStart > winEnd) {
-      gaps.push({ start: winEnd, end: nextStart, feedId: f.id, awake: !!f.awake_after })
-      if (f.awake_after) segs.push([winEnd, nextStart])
+      // A breastfeed next to a formula feed is one combined feeding session —
+      // the baby never goes back down in between, so that gap is always awake.
+      const mixed = next.type !== f.type
+      gaps.push({ start: winEnd, end: nextStart, feedId: f.id, awake: !!f.awake_after, locked: mixed })
+      if (mixed || f.awake_after) segs.push([winEnd, nextStart])
     }
   })
   segs.sort((a, b) => a[0] - b[0])
@@ -1035,7 +1038,7 @@ async function loadSleep() {
     </div>
     <div class="chart-card">
       <h3>Sleep by day</h3>
-      <div class="chart-sub">assumes asleep between feedings — tap a stretch to flip it between asleep and awake</div>
+      <div class="chart-sub">assumes asleep between feedings (breastfeeding ↔ formula gaps count as awake) — tap a stretch to flip it</div>
       <div class="legend">
         <span><i style="background:${SLEEP_COLORS.asleep}"></i>Asleep</span>
         <span><i style="background:${SLEEP_COLORS.awake}"></i>Awake</span>
@@ -1048,6 +1051,10 @@ async function loadSleep() {
     const target = ev.target.closest('[data-gap]')
     if (!target) return
     const g = gaps[Number(target.dataset.gap)]
+    if (g.locked) {
+      toast('Breastfeeding ↔ formula gaps always count as awake')
+      return
+    }
     try {
       await api(`/api/events/${g.feedId}`, { method: 'PATCH', json: { awake_after: g.awake ? 0 : 1 } })
       toast(g.awake ? 'Marked asleep 😴' : 'Marked awake ☀️')
