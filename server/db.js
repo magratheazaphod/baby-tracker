@@ -67,6 +67,12 @@ if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'awake
   console.log('migrated events table: added awake_after')
 }
 
+// Migration: analysis holds the auto-generated Claude read of a diaper photo.
+if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'analysis')) {
+  db.exec('ALTER TABLE events ADD COLUMN analysis TEXT')
+  console.log('migrated events table: added analysis')
+}
+
 export function getMeta(key) {
   return db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null
 }

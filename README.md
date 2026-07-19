@@ -80,3 +80,4 @@ Three layers:
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated in dev | web-push credentials |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
+| `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos; without it, photos still work and analysis is skipped |

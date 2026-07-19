@@ -386,6 +386,23 @@ nav {
   cursor: pointer;
 }
 .photo-preview { max-width: 100%; border-radius: 10px; max-height: 240px; object-fit: contain; }
+.entry-analysis {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.photo-remove {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: none;
+  color: var(--danger);
+  cursor: pointer;
+}
 
 /* --- reports --- */
 

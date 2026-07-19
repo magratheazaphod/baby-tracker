@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
+import { queueDiaperAnalysis } from './analyze.js'
 import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -220,9 +221,7 @@ app.patch('/api/events/:id', requireAuth, (req, res) => {
 app.delete('/api/events/:id', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Not found' })
-  if (existing.photo_path) {
-    fs.rm(path.join(PHOTOS_DIR, path.basename(existing.photo_path)), { force: true }, () => {})
-  }
+  if (existing.photo_path) removePhotoFile(existing.photo_path)
   db.prepare('DELETE FROM events WHERE id = ?').run(existing.id)
   res.json({ ok: true })
 })
@@ -231,20 +230,61 @@ app.delete('/api/events/:id', requireAuth, (req, res) => {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
 
+async function savePhoto(buffer) {
+  const name = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`
+  await sharp(buffer)
+    .rotate() // respect EXIF orientation
+    .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 82 })
+    .toFile(path.join(PHOTOS_DIR, name))
+  return name
+}
+
+function removePhotoFile(photo_path) {
+  fs.rm(path.join(PHOTOS_DIR, path.basename(photo_path)), { force: true }, () => {})
+}
+
 app.post('/api/photos', requireAuth, upload.single('photo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo' })
-  const name = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`
+  let name
   try {
-    await sharp(req.file.buffer)
-      .rotate() // respect EXIF orientation
-      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 82 })
-      .toFile(path.join(PHOTOS_DIR, name))
+    name = await savePhoto(req.file.buffer)
   } catch {
     return res.status(400).json({ error: 'Could not process image' })
   }
   const body = { occurred_at: req.body.occurred_at, notes: req.body.notes, photo_path: name }
   res.json(insertEvent('photo', body, req.user))
+})
+
+// Attach or replace a photo on an existing event (diapers, mainly). Photo
+// events carry their image from creation, so they're excluded here.
+app.post('/api/events/:id/photo', requireAuth, upload.single('photo'), async (req, res) => {
+  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+  if (existing.type === 'photo') return res.status(400).json({ error: 'Photo events are managed via /api/photos' })
+  if (!req.file) return res.status(400).json({ error: 'No photo' })
+  let name
+  try {
+    name = await savePhoto(req.file.buffer)
+  } catch {
+    return res.status(400).json({ error: 'Could not process image' })
+  }
+  if (existing.photo_path) removePhotoFile(existing.photo_path)
+  db.prepare('UPDATE events SET photo_path = ?, analysis = NULL WHERE id = ?').run(name, existing.id)
+  const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id)
+  if (updated.type === 'diaper') queueDiaperAnalysis(updated)
+  res.json(updated)
+})
+
+app.delete('/api/events/:id/photo', requireAuth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+  if (existing.type === 'photo') return res.status(400).json({ error: 'Delete the event itself instead' })
+  if (existing.photo_path) {
+    removePhotoFile(existing.photo_path)
+    db.prepare('UPDATE events SET photo_path = NULL, analysis = NULL WHERE id = ?').run(existing.id)
+  }
+  res.json(db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id))
 })
 
 app.use('/photos', requireAuth, express.static(PHOTOS_DIR, { maxAge: '365d', immutable: true }))

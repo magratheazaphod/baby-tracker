@@ -7,6 +7,7 @@
     "make-icons": "node scripts/make-icons.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "better-sqlite3": "^11.10.0",
     "express": "^4.21.2",
     "multer": "^2.0.1",

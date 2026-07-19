@@ -229,6 +229,10 @@ function openSheet(type, { kind, existing } = {}) {
         <button type="button" data-kind="poop">💩 Poop</button>
         <button type="button" data-kind="both">Both</button>
       </div>
+      <label>${existing?.photo_path ? 'Replace photo' : 'Photo (optional)'}<input type="file" name="photo" accept="image/*"></label>
+      <img class="photo-preview ${existing?.photo_path ? '' : 'hidden'}" id="photo-preview" src="${existing?.photo_path ? `/photos/${escapeHtml(existing.photo_path)}` : ''}" alt="">
+      ${existing?.analysis ? `<div class="entry-analysis">✨ ${escapeHtml(existing.analysis)}</div>` : ''}
+      ${existing?.photo_path ? '<button type="button" class="photo-remove" id="photo-remove">Remove photo</button>' : ''}
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'weight') {
     const unit = localStorage.getItem('weightUnit') || 'lb'
@@ -354,8 +358,25 @@ function openSheet(type, { kind, existing } = {}) {
       preview.src = URL.createObjectURL(f)
       preview.classList.remove('hidden')
       // Default the entry time to when the photo was taken, if older than "now".
-      if (f.lastModified && f.lastModified < Date.now() - 60 * 1000) {
+      // Photo entries only — a diaper's logged time shouldn't move because a
+      // picture from the library was attached.
+      if (type === 'photo' && f.lastModified && f.lastModified < Date.now() - 60 * 1000) {
         sheet.querySelector('[name=occurred_at]').value = toLocalInput(f.lastModified)
+      }
+    }
+  }
+
+  const photoRemove = sheet.querySelector('#photo-remove')
+  if (photoRemove) {
+    photoRemove.onclick = async () => {
+      if (!confirm('Remove this photo?')) return
+      try {
+        const updated = await api(`/api/events/${existing.id}/photo`, { method: 'DELETE' })
+        toast('Photo removed')
+        refreshAll()
+        openSheet(type, { existing: updated })
+      } catch (err) {
+        toast(err.message)
       }
     }
   }
@@ -400,11 +421,24 @@ function openSheet(type, { kind, existing } = {}) {
           const v = Number(fd.get('height'))
           body.height_cm = Math.round((fd.get('unit') === 'cm' ? v : v * 2.54) * 10) / 10
         }
+        let saved
         if (existing) {
-          await api(`/api/events/${existing.id}`, { method: 'PATCH', json: body })
+          saved = await api(`/api/events/${existing.id}`, { method: 'PATCH', json: body })
         } else {
           body.type = type
-          await api('/api/events', { method: 'POST', json: body })
+          saved = await api('/api/events', { method: 'POST', json: body })
+        }
+        const photoFile = fd.get('photo')
+        if (photoFile instanceof File && photoFile.size > 0) {
+          const upload = new FormData()
+          upload.append('photo', photoFile)
+          await api(`/api/events/${saved.id}/photo`, { method: 'POST', body: upload })
+          // The diaper analysis is generated asynchronously server-side;
+          // refresh a couple of times so it appears once ready.
+          if (type === 'diaper') {
+            setTimeout(refreshAll, 12000)
+            setTimeout(refreshAll, 30000)
+          }
         }
       }
       closeSheet()
@@ -429,7 +463,8 @@ function entryEl(e) {
     <div class="entry-body">
       <div class="entry-title">${title}</div>
       ${sub || e.notes ? `<div class="entry-sub">${escapeHtml([sub, e.type === 'photo' ? '' : e.notes].filter(Boolean).join(' · '))}</div>` : ''}
-      ${e.type === 'photo' ? `${e.notes ? `<div class="entry-sub">${escapeHtml(e.notes)}</div>` : ''}<img class="entry-photo" loading="lazy" src="/photos/${escapeHtml(e.photo_path)}" alt="">` : ''}
+      ${e.photo_path ? `${e.type === 'photo' && e.notes ? `<div class="entry-sub">${escapeHtml(e.notes)}</div>` : ''}<img class="entry-photo" loading="lazy" src="/photos/${escapeHtml(e.photo_path)}" alt="">` : ''}
+      ${e.analysis ? `<div class="entry-analysis">✨ ${escapeHtml(e.analysis)}</div>` : ''}
     </div>
     <div class="entry-time">${fmtTime(e.occurred_at)}<span class="by">${escapeHtml(e.created_by)}</span></div>`
   div.onclick = (ev) => {
