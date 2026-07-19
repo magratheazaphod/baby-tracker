@@ -1,0 +1,6 @@
+node_modules/
+data/
+.env
+.DS_Store
+# Contains the real app name — copy fly.toml.example and keep yours local.
+fly.toml

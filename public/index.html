@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#6d28d9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Baby Tracker</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <div class="login-card">
+      <div class="login-icon">👶</div>
+      <h1>Baby Tracker</h1>
+      <input id="login-secret" type="password" placeholder="Family secret" autocomplete="current-password">
+      <div id="login-users" class="login-users"></div>
+      <p id="login-error" class="login-error"></p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <header>
+      <h1 id="app-title">Baby Tracker</h1>
+      <div class="header-right">
+        <button id="nudge-btn" class="icon-btn" title="Enable nudges">🔔</button>
+        <span id="whoami" class="whoami"></span>
+      </div>
+    </header>
+
+    <div id="ios-hint" class="ios-hint hidden">
+      To get nudges on iPhone: tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then open the app from your home screen and tap 🔔.
+      <button id="ios-hint-dismiss">Got it</button>
+    </div>
+
+    <main>
+      <section id="view-log" class="view">
+        <div class="log-grid">
+          <button class="log-btn span3" data-log="breastfeed"><span class="log-emoji">🤱</span>Breastfeeding</button>
+          <button class="log-btn span3" data-log="formula"><span class="log-emoji">🍼</span>Formula</button>
+          <button class="log-btn span2" data-log="diaper" data-kind="pee"><span class="log-emoji">💧</span>Pee</button>
+          <button class="log-btn span2" data-log="diaper" data-kind="poop"><span class="log-emoji">💩</span>Poop</button>
+          <button class="log-btn span2" data-log="diaper" data-kind="both"><span class="log-emoji">💧💩</span>Both</button>
+          <button class="log-btn span3" data-log="height"><span class="log-emoji">📏</span>Height</button>
+          <button class="log-btn span3" data-log="weight"><span class="log-emoji">⚖️</span>Weight</button>
+          <button class="log-btn span6" data-log="photo"><span class="log-emoji">📷</span>Photo</button>
+        </div>
+        <div id="last-entries" class="last-entries"></div>
+      </section>
+
+      <section id="view-timeline" class="view hidden">
+        <div id="timeline"></div>
+        <button id="load-more" class="ghost-btn hidden">Load older entries</button>
+      </section>
+
+      <section id="view-reports" class="view hidden">
+        <div id="reports"></div>
+      </section>
+
+      <section id="view-sleep" class="view hidden">
+        <div id="sleep"></div>
+      </section>
+    </main>
+
+    <nav>
+      <button class="nav-btn active" data-view="log">➕<span>Log</span></button>
+      <button class="nav-btn" data-view="timeline">📋<span>Timeline</span></button>
+      <button class="nav-btn" data-view="reports">📊<span>Reports</span></button>
+      <button class="nav-btn" data-view="sleep">😴<span>Sleep Cycle</span></button>
+    </nav>
+  </div>
+
+  <div id="sheet-backdrop" class="sheet-backdrop hidden">
+    <div id="sheet" class="sheet">
+      <h2 id="sheet-title"></h2>
+      <form id="sheet-form"></form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/growth-curves.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
