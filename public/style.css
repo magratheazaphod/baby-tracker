@@ -21,8 +21,11 @@
   --grid: #e6e2ef;
 }
 
+/* Dark theme: applied by OS preference unless the in-app toggle forces light,
+   and by the toggle's data-theme="dark" regardless of OS. Keep both blocks in sync. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #171228;
     --bg-gradient: linear-gradient(160deg, #1c1433 0%, #151020 55%, #1e1631 100%);
     --surface: #211d2e;
@@ -41,6 +44,28 @@
     --c-weight: #9085e9;
     --grid: #322d42;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #171228;
+  --bg-gradient: linear-gradient(160deg, #1c1433 0%, #151020 55%, #1e1631 100%);
+  --surface: #211d2e;
+  --accent: #a78bfa;
+  --accent-soft: #322a4a;
+  --text: #f2effa;
+  --text-2: #b6afc4;
+  --muted: #8d8798;
+  --hairline: #322d42;
+  --danger: #e66767;
+  --c-formula: #9085e9;
+  --c-breastfeed: #199e70;
+  --c-pee: #c98500;
+  --c-poop: #008300;
+  --c-weight: #9085e9;
+  --grid: #322d42;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {

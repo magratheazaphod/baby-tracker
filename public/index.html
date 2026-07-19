@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-180.png">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/style.css">
+  <script>try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
 </head>
 <body>
   <div id="login" class="login hidden">
@@ -29,6 +30,7 @@
     <header>
       <h1 id="app-title">Baby Tracker</h1>
       <div class="header-right">
+        <button id="theme-btn" class="icon-btn" title="Switch light/dark mode">🌙</button>
         <button id="nudge-btn" class="icon-btn" title="Enable nudges">🔔</button>
         <span id="whoami" class="whoami"></span>
       </div>

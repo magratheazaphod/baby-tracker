@@ -1111,6 +1111,25 @@ function refreshAll() {
   views[active]()
 }
 
+// Theme toggle: overrides the system appearance and persists per device.
+function effectiveTheme() {
+  return (
+    localStorage.getItem('theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  )
+}
+function applyTheme() {
+  const forced = localStorage.getItem('theme')
+  if (forced) document.documentElement.dataset.theme = forced
+  else delete document.documentElement.dataset.theme
+  $('#theme-btn').textContent = effectiveTheme() === 'dark' ? '☀️' : '🌙'
+}
+$('#theme-btn').onclick = () => {
+  localStorage.setItem('theme', effectiveTheme() === 'dark' ? 'light' : 'dark')
+  applyTheme()
+}
+applyTheme()
+
 document.querySelectorAll('.nav-btn').forEach((b) => (b.onclick = () => switchView(b.dataset.view)))
 // Diapers save instantly with the current time — the toast offers an edit.
 async function quickDiaper(kind) {
