@@ -38,11 +38,10 @@ export function queueDiaperAnalysis(event) {
 
 async function analyze(event) {
   const data = await fs.readFile(path.join(PHOTOS_DIR, path.basename(event.photo_path)), 'base64')
-  const res = await client.beta.messages.create({
-    model: 'claude-fable-5',
+  const res = await client.messages.create({
+    model: 'claude-opus-4-8',
     max_tokens: 4000,
-    betas: ['server-side-fallback-2026-06-01'],
-    fallbacks: [{ model: 'claude-opus-4-8' }],
+    thinking: { type: 'adaptive' },
     output_config: { effort: 'low' },
     messages: [
       {
