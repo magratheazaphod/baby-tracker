@@ -235,6 +235,12 @@ nav {
 }
 .log-btn:active { background: var(--accent-soft); }
 .log-emoji { font-size: 32px; }
+.log-last {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: -2px;
+}
 
 .last-entries { margin-top: 22px; }
 .last-entries h3 {
@@ -391,6 +397,32 @@ nav {
   font-size: 13px;
   line-height: 1.4;
   color: var(--muted);
+}
+.bm-share { color: var(--muted); font-size: 12px; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+}
+.milestone-marker {
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
 }
 .photo-remove {
   align-self: flex-start;

@@ -72,7 +72,7 @@ function describe(e) {
     case 'breastfeed':
       return { emoji: '🤱', title: 'Breastfeeding', sub: e.duration_min ? `${e.duration_min} min` : '' }
     case 'formula':
-      return { emoji: '🍼', title: 'Formula', sub: `${e.amount_ml} ml` }
+      return { emoji: '🍼', title: `Bottle · ${e.kind === 'breastmilk' ? 'Breast milk' : 'Formula'}`, sub: `${e.amount_ml} ml` }
     case 'diaper': {
       const label = { pee: 'Pee', poop: 'Poop', both: 'Pee + poop' }[e.kind] || e.kind
       const emoji = { pee: '💧', poop: '💩', both: '💧💩' }[e.kind] || '💧'
@@ -84,6 +84,8 @@ function describe(e) {
       return { emoji: '📏', title: 'Height', sub: fmtHeight(e.height_cm) }
     case 'photo':
       return { emoji: '📷', title: 'Photo', sub: '' }
+    case 'milestone':
+      return { emoji: '🌟', title: e.notes || 'Milestone', sub: '' }
     default:
       return { emoji: '❓', title: e.type, sub: '' }
   }
@@ -196,11 +198,12 @@ function openSheet(type, { kind, existing } = {}) {
   const timeVal = toLocalInput(existing ? existing.occurred_at : new Date())
   const titles = {
     breastfeed: '🤱 Breastfeeding',
-    formula: '🍼 Formula',
+    formula: '🍼 Bottle',
     diaper: '💧 Diaper',
     weight: '⚖️ Weight',
     height: '📏 Height',
     photo: '📷 Photo',
+    milestone: '🌟 Milestone',
   }
   $('#sheet-title').textContent = (existing ? 'Edit — ' : '') + titles[type]
 
@@ -211,7 +214,13 @@ function openSheet(type, { kind, existing } = {}) {
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'formula') {
     const last = existing?.amount_ml ?? Number(localStorage.getItem('lastFormulaMl') || 30)
+    const selectedKind = existing?.kind || localStorage.getItem('lastBottleKind') || 'formula'
     fields = `${fieldTime(timeVal)}
+      <input type="hidden" name="kind" value="${selectedKind}">
+      <div class="seg" id="kind-seg">
+        <button type="button" data-kind="formula">Formula</button>
+        <button type="button" data-kind="breastmilk">Breast milk</button>
+      </div>
       <label>Amount (ml)
         <div class="stepper">
           <button type="button" data-step="-5">−</button>
@@ -268,6 +277,9 @@ function openSheet(type, { kind, existing } = {}) {
         : `<label>Photo<input type="file" name="photo" accept="image/*" required></label>
            <img class="photo-preview hidden" id="photo-preview" alt="">`}
       <label>Caption (optional)<input type="text" name="notes" value="${escapeHtml(existing?.notes ?? '')}"></label>`
+  } else if (type === 'milestone') {
+    fields = `${fieldTime(timeVal)}
+      <label>What happened?<input type="text" name="notes" value="${escapeHtml(existing?.notes ?? '')}" placeholder="Rolled over for the first time" required></label>`
   }
 
   sheet.innerHTML = fields + sheetActions(existing)
@@ -409,7 +421,9 @@ function openSheet(type, { kind, existing } = {}) {
         if (type === 'breastfeed') body.duration_min = fd.get('duration_min') ? Number(fd.get('duration_min')) : null
         if (type === 'formula') {
           body.amount_ml = Number(fd.get('amount_ml'))
+          body.kind = fd.get('kind') || 'formula'
           localStorage.setItem('lastFormulaMl', body.amount_ml)
+          localStorage.setItem('lastBottleKind', body.kind)
         }
         if (type === 'diaper') body.kind = fd.get('kind')
         if (type === 'weight') {
@@ -456,22 +470,71 @@ function openSheet(type, { kind, existing } = {}) {
 
 function entryEl(e) {
   const { emoji, title, sub } = describe(e)
+  // Photo notes render as a caption below the image; milestone notes ARE the title.
+  const subText = [sub, e.type === 'photo' || e.type === 'milestone' ? '' : e.notes].filter(Boolean).join(' · ')
   const div = document.createElement('div')
   div.className = 'entry'
   div.innerHTML = `
     <span class="entry-emoji">${emoji}</span>
     <div class="entry-body">
-      <div class="entry-title">${title}</div>
-      ${sub || e.notes ? `<div class="entry-sub">${escapeHtml([sub, e.type === 'photo' ? '' : e.notes].filter(Boolean).join(' · '))}</div>` : ''}
+      <div class="entry-title">${escapeHtml(title)}</div>
+      ${subText ? `<div class="entry-sub">${escapeHtml(subText)}</div>` : ''}
       ${e.photo_path ? `${e.type === 'photo' && e.notes ? `<div class="entry-sub">${escapeHtml(e.notes)}</div>` : ''}<img class="entry-photo" loading="lazy" src="/photos/${escapeHtml(e.photo_path)}" alt="">` : ''}
       ${e.analysis ? `<div class="entry-analysis">✨ ${escapeHtml(e.analysis)}</div>` : ''}
     </div>
     <div class="entry-time">${fmtTime(e.occurred_at)}<span class="by">${escapeHtml(e.created_by)}</span></div>`
   div.onclick = (ev) => {
-    if (ev.target.classList.contains('entry-photo')) return
+    if (ev.target.classList.contains('entry-photo')) {
+      openLightbox(ev.target.src)
+      return
+    }
     openSheet(e.type, { existing: e })
   }
   return div
+}
+
+// Fullscreen photo viewer: tap a timeline photo to open, tap anywhere to close.
+function openLightbox(src) {
+  const overlay = document.createElement('div')
+  overlay.className = 'lightbox'
+  const img = document.createElement('img')
+  img.src = src
+  img.alt = ''
+  overlay.appendChild(img)
+  overlay.onclick = () => overlay.remove()
+  document.body.appendChild(overlay)
+}
+
+// Virtual age markers ("1 week old", monthly birthdays) computed from the
+// configured birth date — never stored, so both phones always agree and
+// nothing needs backfilling. Only markers whose day has arrived are shown;
+// (afterIso, beforeIso] bounds them to the timeline page being rendered.
+function ageMarkers(afterIso, beforeIso) {
+  if (!cfg?.birthDate) return []
+  const birth = new Date(`${cfg.birthDate}T12:00:00`)
+  if (Number.isNaN(birth.getTime())) return []
+  const now = new Date()
+  const markers = []
+  const add = (d, ageLabel) => {
+    if (d > now) return
+    // Pin to the end of its day so it sorts to the top of that day's group.
+    const at = new Date(d)
+    at.setHours(23, 59, 59, 999)
+    const iso = at.toISOString()
+    if (iso <= afterIso || iso > beforeIso) return
+    markers.push({ type: '_marker', occurred_at: iso, label: `${cfg.babyName} is ${ageLabel} old!` })
+  }
+  for (const w of [1, 2, 3]) {
+    const d = new Date(birth)
+    d.setDate(d.getDate() + w * 7)
+    add(d, `${w} week${w === 1 ? '' : 's'}`)
+  }
+  for (let m = 1; m <= 24; m++) {
+    const d = new Date(birth.getFullYear(), birth.getMonth() + m, birth.getDate(), 12)
+    if (d.getDate() !== birth.getDate()) d.setDate(0) // month overflow: clamp to last day
+    add(d, m % 12 === 0 ? `${m / 12} year${m === 12 ? '' : 's'}` : `${m} month${m === 1 ? '' : 's'}`)
+  }
+  return markers
 }
 
 function renderTimeline(events, { append = false } = {}) {
@@ -487,7 +550,14 @@ function renderTimeline(events, { append = false } = {}) {
       container.appendChild(h)
       lastDay = key
     }
-    container.appendChild(entryEl(e))
+    if (e.type === '_marker') {
+      const m = document.createElement('div')
+      m.className = 'milestone-marker'
+      m.textContent = `🎉 ${e.label}`
+      container.appendChild(m)
+    } else {
+      container.appendChild(entryEl(e))
+    }
   }
   container.dataset.lastDay = lastDay || ''
 }
@@ -497,8 +567,13 @@ async function loadTimeline({ append = false } = {}) {
     ? `/api/events?limit=${PAGE_SIZE}&before=${encodeURIComponent(timelineOldest)}`
     : `/api/events?limit=${PAGE_SIZE}`
   const events = await api(url)
+  const upper = append && timelineOldest ? timelineOldest : '9999'
   if (events.length) timelineOldest = events[events.length - 1].occurred_at
-  renderTimeline(events, { append })
+  // On the last page there is no lower cutoff — show any older markers too.
+  const lower = events.length === PAGE_SIZE ? timelineOldest : ''
+  const merged = [...events, ...ageMarkers(lower, upper)]
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+  renderTimeline(merged, { append })
   $('#load-more').classList.toggle('hidden', events.length < PAGE_SIZE)
   if (!append && !events.length) {
     $('#timeline').innerHTML = '<div class="day-header">No entries yet — log the first one! 💜</div>'
@@ -509,7 +584,39 @@ $('#load-more').onclick = () => loadTimeline({ append: true })
 
 // ---------- recent entries on log screen ----------
 
+function fmtAgo(iso) {
+  const min = Math.floor((Date.now() - new Date(iso)) / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
+}
+
+// Stamp each log button with when that thing was last logged (all diaper
+// buttons share the diaper time) — a glance-check against double-logging.
+async function loadLastLogged() {
+  try {
+    const rows = await api('/api/events/latest')
+    const byType = Object.fromEntries(rows.map((r) => [r.type, r.occurred_at]))
+    document.querySelectorAll('.log-btn').forEach((btn) => {
+      const last = byType[btn.dataset.log]
+      let el = btn.querySelector('.log-last')
+      if (!el) {
+        el = document.createElement('span')
+        el.className = 'log-last'
+        btn.appendChild(el)
+      }
+      el.textContent = last ? fmtAgo(last) : '—'
+    })
+  } catch {
+    /* cosmetic — never block the log screen */
+  }
+}
+
 async function loadRecent() {
+  loadLastLogged()
   const events = await api('/api/events?limit=5')
   const el = $('#last-entries')
   if (!events.length) {
@@ -524,6 +631,8 @@ async function loadRecent() {
 
 const SERIES = {
   formula: { label: 'Formula', color: 'var(--c-formula)' },
+  breastmilk: { label: 'Breast milk', color: 'var(--c-breastfeed)' },
+  bottle: { label: 'Bottle', color: 'var(--c-formula)' },
   breastfeed: { label: 'Breastfeeding', color: 'var(--c-breastfeed)' },
   pee: { label: 'Pee', color: 'var(--c-pee)' },
   poop: { label: 'Poop', color: 'var(--c-poop)' },
@@ -828,7 +937,7 @@ function fillDays(days) {
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     out.push(
-      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, pee: 0, poop: 0 }
+      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pee: 0, poop: 0 }
     )
     if (key >= today) break
     cursor.setDate(cursor.getDate() + 1)
@@ -845,7 +954,7 @@ async function loadReports() {
   }
   const days = fillDays(rawDays)
   const todayKey = dayKey(new Date().toISOString())
-  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, formulaMl: 0, formulaCount: 0, pee: 0, poop: 0 }
+  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, pee: 0, poop: 0 }
   const lastWeight = weights[weights.length - 1]
 
   const unit = localStorage.getItem('weightUnit') || 'lb'
@@ -853,18 +962,19 @@ async function loadReports() {
 
   const tilesHtml = `<div class="tiles">
     <div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>
-    <div class="tile"><div class="tile-label">🍼 Formula today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}</div></div>
+    <div class="tile"><div class="tile-label">🍼 Bottle today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}${today.breastmilkMl ? ` · ${today.breastmilkMl} ml breast milk` : ''}</div></div>
     <div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>
     <div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>
   </div>`
 
   let feedingHtml = ''
   if (days.some((d) => d.formulaMl > 0)) {
-    feedingHtml += chartCard('Formula per day', 'ml of formula', ['formula'],
-      barChart(days, ['formula'], (d) => d.formulaMl, (v) => `${v} ml`))
+    feedingHtml += chartCard('Bottle per day', 'ml by bottle — formula vs pumped breast milk', ['formula', 'breastmilk'],
+      barChart(days, ['formula', 'breastmilk'],
+        (d, k) => (k === 'breastmilk' ? d.breastmilkMl || 0 : d.formulaMl - (d.breastmilkMl || 0)), (v) => `${v} ml`))
   }
-  feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + formula feeds', ['breastfeed', 'formula'],
-    barChart(days, ['breastfeed', 'formula'], (d, k) => (k === 'breastfeed' ? d.breastfeedCount : d.formulaCount), (v) => `${v}`))
+  feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],
+    barChart(days, ['breastfeed', 'bottle'], (d, k) => (k === 'breastfeed' ? d.breastfeedCount : d.formulaCount), (v) => `${v}`))
 
   const diapersHtml = chartCard('Diapers per day', 'pee and poop counts', ['pee', 'poop'],
     barChart(days, ['pee', 'poop'], (d, k) => d[k], (v) => `${v}`))
@@ -925,9 +1035,10 @@ async function loadReports() {
   const historyHtml = `<div class="report-table-wrap"><table class="report-table">
     <tr><th>Day</th><th>🤱</th><th>🍼 ml</th><th>💧</th><th>💩</th></tr>
     ${[...days].reverse().slice(0, 14).map((d) =>
-      `<tr><td>${fmtDayHeader(d.date)}</td><td>${d.breastfeedCount}</td><td>${d.formulaMl}</td><td>${d.pee}</td><td>${d.poop}</td></tr>`
+      `<tr><td>${fmtDayHeader(d.date)}</td><td>${d.breastfeedCount}</td><td>${d.formulaMl}${d.breastmilkMl ? ` <span class="bm-share">(${d.breastmilkMl} bm)</span>` : ''}</td><td>${d.pee}</td><td>${d.poop}</td></tr>`
     ).join('')}
-  </table></div>`
+  </table></div>
+  <div class="chart-sub">🍼 ml is total bottle volume; (bm) is the breast-milk share of it</div>`
 
   const sections = [
     { id: 'today', label: 'Today', html: tilesHtml },
@@ -1073,7 +1184,7 @@ async function loadSleep() {
     </div>
     <div class="chart-card">
       <h3>Sleep by day</h3>
-      <div class="chart-sub">assumes asleep between feedings (a formula top-up within an hour of breastfeeding counts as awake) — tap a stretch to flip it</div>
+      <div class="chart-sub">assumes asleep between feedings (a bottle top-up within an hour of breastfeeding counts as awake) — tap a stretch to flip it</div>
       <div class="legend">
         <span><i style="background:${SLEEP_COLORS.asleep}"></i>Asleep</span>
         <span><i style="background:${SLEEP_COLORS.awake}"></i>Awake</span>
@@ -1087,7 +1198,7 @@ async function loadSleep() {
     if (!target) return
     const g = gaps[Number(target.dataset.gap)]
     if (g.locked) {
-      toast('Breastfeeding → formula top-ups count as awake')
+      toast('Breastfeeding → bottle top-ups count as awake')
       return
     }
     try {
@@ -1140,6 +1251,12 @@ async function enableNudges() {
 // ---------- navigation & boot ----------
 
 const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep }
+
+// The app often sits open on the log screen for hours — keep the
+// "last logged" stamps from going stale.
+setInterval(() => {
+  if (!$('#view-log').classList.contains('hidden')) loadLastLogged()
+}, 60000)
 
 function switchView(name) {
   document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name))

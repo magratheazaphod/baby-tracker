@@ -10,6 +10,11 @@ import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
 import { queueDiaperAnalysis } from './analyze.js'
 import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
 
+// Keep libvips lean: the Fly machine is small and uploads arrive one at a
+// time, so trading throughput for a flat memory profile is free.
+sharp.cache(false)
+sharp.concurrency(1)
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 3000)
 const HOME_TZ = process.env.HOME_TZ || 'America/Los_Angeles'
@@ -116,8 +121,11 @@ function requireAuth(req, res, next) {
 
 // --- events ---
 
-const TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'photo']
+const TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'photo', 'milestone']
 const DIAPER_KINDS = ['pee', 'poop', 'both']
+// Bottle feeds keep the historical type name 'formula'; kind says what was in
+// the bottle. Rows from before the split have kind NULL and mean formula.
+const BOTTLE_KINDS = ['formula', 'breastmilk']
 
 // Returns null on success, an error message otherwise. Fields irrelevant to the
 // type are rejected so a bad client can't write nonsense rows.
@@ -129,7 +137,8 @@ function validateEvent(type, body) {
     case 'breastfeed':
       return num(body.duration_min) ? null : 'Bad duration'
     case 'formula':
-      return typeof body.amount_ml === 'number' && body.amount_ml > 0 ? null : 'Formula needs an amount in ml'
+      if (!(typeof body.amount_ml === 'number' && body.amount_ml > 0)) return 'Bottle needs an amount in ml'
+      return body.kind == null || BOTTLE_KINDS.includes(body.kind) ? null : 'Bottle kind must be formula or breastmilk'
     case 'diaper':
       return DIAPER_KINDS.includes(body.kind) ? null : 'Diaper needs a kind: pee, poop, or both'
     case 'weight':
@@ -138,16 +147,19 @@ function validateEvent(type, body) {
       return typeof body.height_cm === 'number' && body.height_cm > 0 ? null : 'Height needs cm'
     case 'photo':
       return null
+    case 'milestone':
+      return typeof body.notes === 'string' && body.notes.trim() ? null : 'Milestone needs a description'
   }
 }
 
 const FIELDS_BY_TYPE = {
   breastfeed: ['duration_min', 'awake_after'],
-  formula: ['amount_ml', 'awake_after'],
+  formula: ['amount_ml', 'awake_after', 'kind'],
   diaper: ['kind'],
   weight: ['weight_g'],
   height: ['height_cm'],
   photo: [],
+  milestone: [],
 }
 
 function insertEvent(type, body, user) {
@@ -165,6 +177,7 @@ function insertEvent(type, body, user) {
     awake_after: 0,
   }
   for (const f of FIELDS_BY_TYPE[type]) row[f] = body[f] ?? null
+  if (type === 'formula' && !row.kind) row.kind = 'formula'
   row.awake_after = row.awake_after ? 1 : 0
   const info = db
     .prepare(
@@ -189,6 +202,12 @@ app.get('/api/events', requireAuth, (req, res) => {
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
   res.json(db.prepare(`SELECT * FROM events ${where} ORDER BY occurred_at DESC LIMIT ?`).all(...params, limit))
+})
+
+// Last time each type was logged — shown on the log buttons to prevent
+// double-logging (two parents, no live sync).
+app.get('/api/events/latest', requireAuth, (req, res) => {
+  res.json(db.prepare('SELECT type, MAX(occurred_at) AS occurred_at FROM events GROUP BY type').all())
 })
 
 app.post('/api/events', requireAuth, (req, res) => {
@@ -318,6 +337,7 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
         breastfeedMin: 0,
         formulaCount: 0,
         formulaMl: 0,
+        breastmilkMl: 0,
         pee: 0,
         poop: 0,
       })
@@ -327,8 +347,11 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       d.breastfeedCount++
       d.breastfeedMin += e.duration_min || 0
     } else if (e.type === 'formula') {
+      // formulaCount/formulaMl total ALL bottles (historical field names);
+      // breastmilkMl carves out the pumped-milk share.
       d.formulaCount++
       d.formulaMl += e.amount_ml || 0
+      if (e.kind === 'breastmilk') d.breastmilkMl += e.amount_ml || 0
     } else if (e.type === 'diaper') {
       if (e.kind === 'pee' || e.kind === 'both') d.pee++
       if (e.kind === 'poop' || e.kind === 'both') d.poop++

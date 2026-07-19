@@ -12,7 +12,7 @@ db.pragma('journal_mode = WAL')
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','diaper','weight','height','photo')),
+  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','diaper','weight','height','photo','milestone')),
   occurred_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   notes TEXT,
@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS events (
   weight_g REAL,
   height_cm REAL,
   photo_path TEXT,
+  awake_after INTEGER NOT NULL DEFAULT 0,
+  analysis TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 )`
 
@@ -72,6 +74,28 @@ if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'analy
   db.exec('ALTER TABLE events ADD COLUMN analysis TEXT')
   console.log('migrated events table: added analysis')
 }
+
+// Migration: 'milestone' joined the type CHECK, which can't be altered in
+// place — rebuild once. Keyed on the live table's SQL, not a column check,
+// since this migration adds no column. Runs after the ADD COLUMN migrations
+// above so every column named here exists in the old table.
+if (!db.prepare("SELECT sql FROM sqlite_master WHERE name = 'events'").get().sql.includes("'milestone'")) {
+  db.exec(`
+    BEGIN;
+    ALTER TABLE events RENAME TO events_old;
+    ${EVENTS_SCHEMA};
+    INSERT INTO events (id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, photo_path, awake_after, analysis, created_at)
+      SELECT id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, photo_path, awake_after, analysis, created_at FROM events_old;
+    DROP TABLE events_old;
+    CREATE INDEX IF NOT EXISTS idx_events_occurred ON events(occurred_at);
+    COMMIT;
+  `)
+  console.log('migrated events table: added milestone type')
+}
+
+// Backfill: bottle feeds gained a kind (formula | breastmilk); rows logged
+// before the split mean formula. Idempotent, so it just runs every startup.
+db.exec("UPDATE events SET kind = 'formula' WHERE type = 'formula' AND kind IS NULL")
 
 export function getMeta(key) {
   return db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null
