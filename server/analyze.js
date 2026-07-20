@@ -16,13 +16,24 @@ function babyAgeLine() {
   return `The baby is ${days} day${days === 1 ? '' : 's'} old. `
 }
 
-function prompt(kind) {
+function prompt(kind, priors) {
   const label = { pee: 'pee', poop: 'poop', both: 'pee and poop' }[kind] || kind
-  return (
+  const intro =
     `This photo shows the contents of a newborn's diaper, logged by the parents as "${label}". ` +
-    babyAgeLine() +
-    'In 2-3 short sentences, describe the classic diaper qualities: color, texture/consistency, ' +
-    'and rough amount, and say whether this looks typical and healthy for a baby of this age. ' +
+    babyAgeLine()
+  // After the first couple of write-ups the full description reads samey —
+  // show the model its own recent notes so repeats collapse to one line.
+  const body =
+    priors.length >= 2
+      ? `Your recent notes on this baby's previous diapers:\n${priors.map((a) => `- ${a}`).join('\n')}\n` +
+        'If this one is more of the same, reply with ONE short, warm sentence confirming all is well — ' +
+        'vary the phrasing rather than repeating the descriptions above. Only describe color/texture/' +
+        'amount in detail if something is genuinely different or distinctive this time. '
+      : 'In 2-3 short sentences, describe the classic diaper qualities: color, texture/consistency, ' +
+        'and rough amount, and say whether this looks typical and healthy for a baby of this age. '
+  return (
+    intro +
+    body +
     'If anything in the photo is a recognized reason to check with a pediatrician (for example red, ' +
     'black, or white/chalky stool), say so calmly and clearly. You are talking directly to the ' +
     "parents; be warm and factual. You are not diagnosing - don't add disclaimers beyond that. " +
@@ -38,6 +49,13 @@ export function queueDiaperAnalysis(event) {
 
 async function analyze(event) {
   const data = await fs.readFile(path.join(PHOTOS_DIR, path.basename(event.photo_path)), 'base64')
+  const priors = db
+    .prepare(
+      `SELECT analysis FROM events WHERE type = 'diaper' AND analysis IS NOT NULL AND id != ?
+       ORDER BY occurred_at DESC LIMIT 3`
+    )
+    .all(event.id)
+    .map((r) => r.analysis)
   const res = await client.messages.create({
     model: 'claude-opus-4-8',
     max_tokens: 4000,
@@ -48,7 +66,7 @@ async function analyze(event) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
-          { type: 'text', text: prompt(event.kind) },
+          { type: 'text', text: prompt(event.kind, priors) },
         ],
       },
     ],
