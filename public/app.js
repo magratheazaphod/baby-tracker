@@ -217,6 +217,8 @@ function openSheet(type, { kind, existing } = {}) {
   } else if (type === 'formula') {
     const last = existing?.amount_ml ?? Number(localStorage.getItem('lastFormulaMl') || 30)
     const selectedKind = existing?.kind || localStorage.getItem('lastBottleKind') || 'formula'
+    // Breast milk is pumped in odd amounts, so step by 1 ml; formula stays at 5.
+    const stepMl = selectedKind === 'breastmilk' ? 1 : 5
     fields = `${fieldTime(timeVal)}
       <input type="hidden" name="kind" value="${selectedKind}">
       <div class="seg" id="kind-seg">
@@ -225,9 +227,9 @@ function openSheet(type, { kind, existing } = {}) {
       </div>
       <label>Amount (ml)
         <div class="stepper">
-          <button type="button" data-step="-5">−</button>
-          <input type="number" name="amount_ml" inputmode="numeric" min="5" step="5" value="${last}" required>
-          <button type="button" data-step="5">+</button>
+          <button type="button" data-step="-1">−</button>
+          <input type="number" name="amount_ml" inputmode="numeric" min="${stepMl}" step="${stepMl}" value="${last}" required>
+          <button type="button" data-step="1">+</button>
         </div>
       </label>
       ${fieldNotes(existing?.notes)}`
@@ -289,8 +291,9 @@ function openSheet(type, { kind, existing } = {}) {
   sheet.querySelectorAll('[data-step]').forEach((btn) => {
     btn.onclick = () => {
       const input = sheet.querySelector('[name=amount_ml]')
+      const stepMl = sheet.querySelector('[name=kind]')?.value === 'breastmilk' ? 1 : 5
       input.dataset.touched = '1'
-      input.value = Math.max(5, (Number(input.value) || 0) + Number(btn.dataset.step))
+      input.value = Math.max(stepMl, (Number(input.value) || 0) + stepMl * Number(btn.dataset.step))
     }
   })
 
@@ -313,6 +316,12 @@ function openSheet(type, { kind, existing } = {}) {
     const sync = () => {
       const v = sheet.querySelector('[name=kind]').value
       kindSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.kind === v))
+      const amount = sheet.querySelector('[name=amount_ml]')
+      if (amount) {
+        const stepMl = v === 'breastmilk' ? 1 : 5
+        amount.min = stepMl
+        amount.step = stepMl
+      }
     }
     kindSeg.querySelectorAll('button').forEach((b) => {
       b.onclick = () => {
