@@ -16,7 +16,7 @@ function babyAgeLine() {
   return `The baby is ${days} day${days === 1 ? '' : 's'} old. `
 }
 
-function prompt(kind, priors) {
+function prompt(kind, priors, notes) {
   const label = { pee: 'pee', poop: 'poop', both: 'pee and poop' }[kind] || kind
   const intro =
     `This photo shows the contents of a newborn's diaper, logged by the parents as "${label}". ` +
@@ -31,9 +31,20 @@ function prompt(kind, priors) {
         'amount in detail if something is genuinely different or distinctive this time. '
       : 'In 2-3 short sentences, describe the classic diaper qualities: color, texture/consistency, ' +
         'and rough amount, and say whether this looks typical and healthy for a baby of this age. '
+  // The parents can add a note (a smell, a worry, something the photo can't
+  // convey). Whatever else the reply does, it must speak to that note — even
+  // when everything else is routine and the reply would otherwise be one line.
+  const note =
+    notes && notes.trim()
+      ? `The parents added this note when they logged it: "${notes.trim()}". Address it directly and ` +
+        'specifically in your reply: relate it to what you can (or cannot) see in the photo, and say ' +
+        'plainly whether it is normal, something to keep an eye on, or worth raising with a ' +
+        'pediatrician. Do this even if the diaper itself looks routine. '
+      : ''
   return (
     intro +
     body +
+    note +
     'If anything in the photo is a recognized reason to check with a pediatrician (for example red, ' +
     'black, or white/chalky stool), say so calmly and clearly. You are talking directly to the ' +
     "parents; be warm and factual. You are not diagnosing - don't add disclaimers beyond that. " +
@@ -66,7 +77,7 @@ async function analyze(event) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
-          { type: 'text', text: prompt(event.kind, priors) },
+          { type: 'text', text: prompt(event.kind, priors, event.notes) },
         ],
       },
     ],

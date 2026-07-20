@@ -357,6 +357,20 @@ app.post('/api/events/:id/photo', requireAuth, upload.single('photo'), async (re
   res.json(updated)
 })
 
+// Re-run the diaper analysis on an existing photo without re-uploading it —
+// used when a note is added after the fact or the prompt improves. Clears the
+// old write-up and re-queues; the reply is fetched fresh with GET /api/events.
+app.post('/api/events/:id/reanalyze', requireAuth, (req, res) => {
+  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id)
+  if (!existing) return res.status(404).json({ error: 'Not found' })
+  if (existing.type !== 'diaper' || !existing.photo_path)
+    return res.status(400).json({ error: 'Only diaper events with a photo can be analyzed' })
+  db.prepare('UPDATE events SET analysis = NULL WHERE id = ?').run(existing.id)
+  const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id)
+  queueDiaperAnalysis(updated)
+  res.json(updated)
+})
+
 app.delete('/api/events/:id/photo', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id)
   if (!existing) return res.status(404).json({ error: 'Not found' })
