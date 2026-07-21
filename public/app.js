@@ -23,6 +23,29 @@ async function api(url, opts = {}) {
   return data
 }
 
+// POST a FormData with upload-progress reporting. fetch() can't observe upload
+// progress, so photo uploads go through XHR. onProgress gets a 0..1 fraction
+// (only while the body is still uploading; null once the server is processing).
+function apiUpload(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.upload.onprogress = (e) => {
+      if (onProgress) onProgress(e.lengthComputable ? e.loaded / e.total : null)
+    }
+    xhr.upload.onload = () => { if (onProgress) onProgress(null) } // body sent; server working
+    xhr.onload = () => {
+      let data = {}
+      try { data = JSON.parse(xhr.responseText) } catch { /* non-JSON error body */ }
+      if (xhr.status === 401) { showLogin(); reject(new Error('Not logged in')); return }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject(new Error(data.error || 'Request failed'))
+    }
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection'))
+    xhr.send(formData)
+  })
+}
+
 // ---------- formatting ----------
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -194,7 +217,10 @@ function escapeHtml(s) {
 }
 
 function sheetActions(existing) {
-  return `<div class="sheet-actions">
+  return `<div class="upload-progress hidden" id="upload-progress" role="progressbar" aria-label="Uploading photo">
+    <div class="upload-progress-bar" id="upload-progress-bar"></div>
+  </div>
+  <div class="sheet-actions">
     ${existing ? '<button type="button" class="delete" id="sheet-delete">Delete</button>' : ''}
     <button type="submit" class="save">Save</button>
   </div>`
@@ -455,10 +481,33 @@ function openSheet(type, { kind, existing } = {}) {
     }
   }
 
+  let submitting = false
   sheet.onsubmit = async (e) => {
     e.preventDefault()
+    if (submitting) return // guard against double-tap / Enter re-submits
+    submitting = true
     const fd = new FormData(sheet)
     const occurredAt = new Date(fd.get('occurred_at')).toISOString()
+
+    // Busy-state UI: disable Save, and for photo uploads show a progress bar.
+    const saveBtn = sheet.querySelector('.save')
+    const progress = sheet.querySelector('#upload-progress')
+    const progressBar = sheet.querySelector('#upload-progress-bar')
+    const photoToUpload = fd.get('photo')
+    const hasUpload = photoToUpload instanceof File && photoToUpload.size > 0
+    saveBtn.disabled = true
+    saveBtn.textContent = hasUpload ? 'Uploading…' : 'Saving…'
+    const onProgress = (frac) => {
+      progress.classList.remove('hidden')
+      if (frac == null) {
+        // Body sent, server processing — fill the bar and let it pulse.
+        progressBar.style.width = '100%'
+        progress.classList.add('processing')
+      } else {
+        progress.classList.remove('processing')
+        progressBar.style.width = `${Math.round(frac * 100)}%`
+      }
+    }
 
     try {
       if (type === 'photo' && !existing) {
@@ -466,7 +515,7 @@ function openSheet(type, { kind, existing } = {}) {
         upload.append('photo', fd.get('photo'))
         upload.append('occurred_at', occurredAt)
         upload.append('notes', fd.get('notes') || '')
-        await api('/api/photos', { method: 'POST', body: upload })
+        await apiUpload('/api/photos', upload, onProgress)
       } else {
         const body = { occurred_at: occurredAt, notes: fd.get('notes') || null }
         if (type === 'breastfeed') body.duration_min = fd.get('duration_min') ? Number(fd.get('duration_min')) : null
@@ -501,7 +550,7 @@ function openSheet(type, { kind, existing } = {}) {
         if (photoFile instanceof File && photoFile.size > 0) {
           const upload = new FormData()
           upload.append('photo', photoFile)
-          await api(`/api/events/${saved.id}/photo`, { method: 'POST', body: upload })
+          await apiUpload(`/api/events/${saved.id}/photo`, upload, onProgress)
           // The diaper analysis is generated asynchronously server-side;
           // refresh a couple of times so it appears once ready.
           if (type === 'diaper') {
@@ -515,6 +564,13 @@ function openSheet(type, { kind, existing } = {}) {
       refreshAll()
     } catch (err) {
       toast(err.message)
+      // Re-enable the form so the user can retry.
+      submitting = false
+      saveBtn.disabled = false
+      saveBtn.textContent = 'Save'
+      progress.classList.add('hidden')
+      progress.classList.remove('processing')
+      progressBar.style.width = '0%'
     }
   }
 

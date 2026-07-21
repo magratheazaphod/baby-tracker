@@ -401,6 +401,7 @@ nav {
   color: #fff;
   cursor: pointer;
 }
+.sheet-actions .save:disabled { opacity: 0.65; cursor: default; }
 .sheet-actions .delete {
   padding: 14px 18px;
   font-size: 15px;
@@ -411,6 +412,23 @@ nav {
   color: var(--danger);
   cursor: pointer;
 }
+.upload-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.upload-progress-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+/* Body fully sent, server still processing — pulse the filled bar. */
+.upload-progress.processing .upload-progress-bar { animation: upload-pulse 1s ease-in-out infinite; }
+@keyframes upload-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .photo-preview { max-width: 100%; border-radius: 10px; max-height: 240px; object-fit: contain; }
 .entry-analysis {
   margin-top: 6px;
