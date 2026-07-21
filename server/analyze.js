@@ -68,9 +68,12 @@ async function analyze(event) {
     .all(event.id)
     .map((r) => r.analysis)
   const res = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: 'claude-sonnet-5',
     max_tokens: 4000,
-    thinking: { type: 'adaptive' },
+    // Reading a diaper photo is a simple visual check, not a reasoning task —
+    // Sonnet at low effort with thinking off keeps it cheap. (Thinking is on by
+    // default on Sonnet 5 when omitted, so disable it explicitly.)
+    thinking: { type: 'disabled' },
     output_config: { effort: 'low' },
     messages: [
       {
