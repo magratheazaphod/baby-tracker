@@ -12,7 +12,7 @@ db.pragma('journal_mode = WAL')
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','diaper','weight','height','photo','milestone')),
+  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','diaper','weight','height','head','photo','milestone')),
   occurred_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   notes TEXT,
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS events (
   kind TEXT,
   weight_g REAL,
   height_cm REAL,
+  head_cm REAL,
   photo_path TEXT,
   awake_after INTEGER NOT NULL DEFAULT 0,
   analysis TEXT,
@@ -91,6 +92,23 @@ if (!db.prepare("SELECT sql FROM sqlite_master WHERE name = 'events'").get().sql
     COMMIT;
   `)
   console.log('migrated events table: added milestone type')
+}
+
+// Migration: head circumference (head_cm column + 'head' in the type CHECK).
+// The CHECK can't be altered in place, so rebuild once. Keyed on the new
+// column; runs after every ADD COLUMN above so the old table has them all.
+if (!db.prepare('PRAGMA table_info(events)').all().some((c) => c.name === 'head_cm')) {
+  db.exec(`
+    BEGIN;
+    ALTER TABLE events RENAME TO events_old;
+    ${EVENTS_SCHEMA};
+    INSERT INTO events (id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, photo_path, awake_after, analysis, created_at)
+      SELECT id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, photo_path, awake_after, analysis, created_at FROM events_old;
+    DROP TABLE events_old;
+    CREATE INDEX IF NOT EXISTS idx_events_occurred ON events(occurred_at);
+    COMMIT;
+  `)
+  console.log('migrated events table: added head circumference support')
 }
 
 // Backfill: bottle feeds gained a kind (formula | breastmilk); rows logged

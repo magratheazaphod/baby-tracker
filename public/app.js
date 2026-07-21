@@ -67,6 +67,10 @@ function fmtHeight(cm) {
   return `${cm.toFixed(1)} cm (${(cm / 2.54).toFixed(1)} in)`
 }
 
+function fmtHead(cm) {
+  return `${cm.toFixed(1)} cm (${(cm / 2.54).toFixed(1)} in)`
+}
+
 function describe(e) {
   switch (e.type) {
     case 'breastfeed':
@@ -82,6 +86,8 @@ function describe(e) {
       return { emoji: '⚖️', title: 'Weight', sub: fmtWeight(e.weight_g) }
     case 'height':
       return { emoji: '📏', title: 'Height', sub: fmtHeight(e.height_cm) }
+    case 'head':
+      return { emoji: '🧠', title: 'Head', sub: fmtHead(e.head_cm) }
     case 'photo':
       return { emoji: '📷', title: 'Photo', sub: '' }
     case 'milestone':
@@ -204,6 +210,7 @@ function openSheet(type, { kind, existing } = {}) {
     diaper: '💧 Diaper',
     weight: '⚖️ Weight',
     height: '📏 Height',
+    head: '🧠 Head circumference',
     photo: '📷 Photo',
     milestone: '🌟 Milestone',
   }
@@ -272,7 +279,18 @@ function openSheet(type, { kind, existing } = {}) {
         <button type="button" data-unit="in">inches</button>
         <button type="button" data-unit="cm">cm</button>
       </div>
-      <label>Height (<span id="hunit-label">${unit}</span>)<input type="number" name="height" inputmode="decimal" min="0" step="0.1" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
+      <label><span>Height (<span id="hunit-label">${unit}</span>)</span><input type="number" name="height" inputmode="decimal" min="0" step="0.1" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
+      ${fieldNotes(existing?.notes)}`
+  } else if (type === 'head') {
+    const unit = localStorage.getItem('headUnit') || 'cm'
+    const cm = existing?.head_cm
+    fields = `${fieldTime(timeVal)}
+      <input type="hidden" name="unit" value="${unit}">
+      <div class="seg" id="headunit-seg">
+        <button type="button" data-unit="in">inches</button>
+        <button type="button" data-unit="cm">cm</button>
+      </div>
+      <label><span>Head circumference (<span id="headunit-label">${unit}</span>)</span><input type="number" name="head" inputmode="decimal" min="0" step="0.1" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'photo') {
     fields = `${fieldTime(timeVal)}
@@ -372,6 +390,28 @@ function openSheet(type, { kind, existing } = {}) {
     sync()
   }
 
+  const headunitSeg = sheet.querySelector('#headunit-seg')
+  if (headunitSeg) {
+    const sync = () => {
+      const v = sheet.querySelector('[name=unit]').value
+      headunitSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.unit === v))
+      sheet.querySelector('#headunit-label').textContent = v
+    }
+    headunitSeg.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        const input = sheet.querySelector('[name=head]')
+        const prev = sheet.querySelector('[name=unit]').value
+        if (input.value && prev !== b.dataset.unit) {
+          input.value = (b.dataset.unit === 'cm' ? Number(input.value) * 2.54 : Number(input.value) / 2.54).toFixed(1)
+        }
+        sheet.querySelector('[name=unit]').value = b.dataset.unit
+        localStorage.setItem('headUnit', b.dataset.unit)
+        sync()
+      }
+    })
+    sync()
+  }
+
   const fileInput = sheet.querySelector('[name=photo]')
   if (fileInput) {
     fileInput.onchange = () => {
@@ -445,6 +485,10 @@ function openSheet(type, { kind, existing } = {}) {
         if (type === 'height') {
           const v = Number(fd.get('height'))
           body.height_cm = Math.round((fd.get('unit') === 'cm' ? v : v * 2.54) * 10) / 10
+        }
+        if (type === 'head') {
+          const v = Number(fd.get('head'))
+          body.head_cm = Math.round((fd.get('unit') === 'cm' ? v : v * 2.54) * 10) / 10
         }
         let saved
         if (existing) {
@@ -1009,9 +1053,9 @@ function fillDays(days) {
 }
 
 async function loadReports() {
-  const { days: rawDays, weights, heights } = await api('/api/reports/daily?days=30')
+  const { days: rawDays, weights, heights, heads = [] } = await api('/api/reports/daily?days=30')
   const el = $('#reports')
-  if (!rawDays.length && !weights.length && !heights.length) {
+  if (!rawDays.length && !weights.length && !heights.length && !heads.length) {
     el.innerHTML = '<div class="day-header">No data yet — reports appear once you start logging.</div>'
     return
   }
@@ -1045,20 +1089,26 @@ async function loadReports() {
   const lastHeight = heights[heights.length - 1]
   const hUnit = localStorage.getItem('heightUnit') || 'in'
   const fmtH = (cm) => (hUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
+  const lastHead = heads[heads.length - 1]
+  const cUnit = localStorage.getItem('headUnit') || 'cm'
+  const fmtC = (cm) => (cUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
   let growthHtml = ''
 
   const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
-  if (cfg.birthDate && GROWTH_LMS && (weights.length || heights.length)) {
+  if (cfg.birthDate && GROWTH_LMS && (weights.length || heights.length || heads.length)) {
     const birth = new Date(`${cfg.birthDate}T12:00:00`)
     const ageMo = (iso) => Math.max(0, (new Date(iso) - birth) / (86400000 * 30.4375))
     const wg = weights.map((w) => ({ iso: w.occurred_at, value: w.weight_g / 1000, ageMo: ageMo(w.occurred_at) }))
     const hg = heights.map((h) => ({ iso: h.occurred_at, value: h.height_cm, ageMo: ageMo(h.occurred_at) }))
+    const cg = heads.map((h) => ({ iso: h.occurred_at, value: h.head_cm, ageMo: ageMo(h.occurred_at) }))
     const lastW = wg[wg.length - 1]
     const lastH = hg[hg.length - 1]
+    const lastC = cg[cg.length - 1]
 
     growthHtml += `<div class="tiles">
       ${lastW ? `<div class="tile"><div class="tile-label">⚖️ Weight percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.weight, lastW.ageMo, lastW.value))}</div><div class="tile-sub">${fmtWeight(lastW.value * 1000)}</div></div>` : ''}
       ${lastH ? `<div class="tile"><div class="tile-label">📏 Height percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.length, lastH.ageMo, lastH.value))}</div><div class="tile-sub">${fmtHeight(lastH.value)}</div></div>` : ''}
+      ${lastC ? `<div class="tile"><div class="tile-label">🧠 Head percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.head, lastC.ageMo, lastC.value))}</div><div class="tile-sub">${fmtHead(lastC.value)}</div></div>` : ''}
     </div>`
 
     const curveLabel = `on WHO ${cfg.babySex}s’ growth standards (3rd–97th percentile) — tap a dot for the exact percentile`
@@ -1070,10 +1120,15 @@ async function loadReports() {
       growthHtml += chartCard('Height', curveLabel, [],
         growthChart(hg, GROWTH_LMS.length, 'var(--c-breastfeed)', (cm) => fmtH(cm)))
     }
-    if (wg.length >= 2 || hg.length >= 2) {
+    if (cg.length) {
+      growthHtml += chartCard('Head circumference', curveLabel, [],
+        growthChart(cg, GROWTH_LMS.head, 'var(--c-feed)', (cm) => fmtC(cm)))
+    }
+    if (wg.length >= 2 || hg.length >= 2 || cg.length >= 2) {
       const series = []
       if (wg.length >= 2) series.push({ label: 'Weight', color: 'var(--c-weight)', points: wg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.weight, p.ageMo, p.value) })) })
       if (hg.length >= 2) series.push({ label: 'Height', color: 'var(--c-breastfeed)', points: hg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.length, p.ageMo, p.value) })) })
+      if (cg.length >= 2) series.push({ label: 'Head', color: 'var(--c-feed)', points: cg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.head, p.ageMo, p.value) })) })
       growthHtml += `<div class="chart-card"><h3>Percentile history</h3><div class="chart-sub">tracking against the curves over time</div>
         <div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
         ${pctChart(series)}</div>`
@@ -1091,6 +1146,12 @@ async function loadReports() {
         lineChart(heights.map((h) => ({ occurred_at: h.occurred_at, value: h.height_cm })), 'var(--c-breastfeed)', (cm) => fmtH(cm)))
     } else if (lastHeight) {
       growthHtml += `<div class="chart-card"><h3>Height</h3><div class="chart-sub">latest: ${fmtHeight(lastHeight.height_cm)} — the curve appears after a second measurement</div></div>`
+    }
+    if (heads.length >= 2) {
+      growthHtml += chartCard('Head circumference', lastHead ? `latest: ${fmtHead(lastHead.head_cm)}` : '', [],
+        lineChart(heads.map((h) => ({ occurred_at: h.occurred_at, value: h.head_cm })), 'var(--c-feed)', (cm) => fmtC(cm)))
+    } else if (lastHead) {
+      growthHtml += `<div class="chart-card"><h3>Head circumference</h3><div class="chart-sub">latest: ${fmtHead(lastHead.head_cm)} — the curve appears after a second measurement</div></div>`
     }
   }
   if (!growthHtml) growthHtml = '<div class="chart-card"><h3>Growth</h3><div class="chart-sub">no measurements yet</div></div>'

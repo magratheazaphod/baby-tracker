@@ -121,7 +121,7 @@ function requireAuth(req, res, next) {
 
 // --- events ---
 
-const TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'photo', 'milestone']
+const TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'head', 'photo', 'milestone']
 const DIAPER_KINDS = ['pee', 'poop', 'both']
 // Bottle feeds keep the historical type name 'formula'; kind says what was in
 // the bottle. Rows from before the split have kind NULL and mean formula.
@@ -145,6 +145,8 @@ function validateEvent(type, body) {
       return typeof body.weight_g === 'number' && body.weight_g > 0 ? null : 'Weight needs grams'
     case 'height':
       return typeof body.height_cm === 'number' && body.height_cm > 0 ? null : 'Height needs cm'
+    case 'head':
+      return typeof body.head_cm === 'number' && body.head_cm > 0 ? null : 'Head circumference needs cm'
     case 'photo':
       return null
     case 'milestone':
@@ -158,6 +160,7 @@ const FIELDS_BY_TYPE = {
   diaper: ['kind'],
   weight: ['weight_g'],
   height: ['height_cm'],
+  head: ['head_cm'],
   photo: [],
   milestone: [],
 }
@@ -173,6 +176,7 @@ function insertEvent(type, body, user) {
     kind: null,
     weight_g: null,
     height_cm: null,
+    head_cm: null,
     photo_path: body.photo_path || null,
     awake_after: 0,
   }
@@ -181,8 +185,8 @@ function insertEvent(type, body, user) {
   row.awake_after = row.awake_after ? 1 : 0
   const info = db
     .prepare(
-      `INSERT INTO events (type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, photo_path, awake_after)
-       VALUES (@type, @occurred_at, @created_by, @notes, @duration_min, @amount_ml, @kind, @weight_g, @height_cm, @photo_path, @awake_after)`
+      `INSERT INTO events (type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, head_cm, photo_path, awake_after)
+       VALUES (@type, @occurred_at, @created_by, @notes, @duration_min, @amount_ml, @kind, @weight_g, @height_cm, @head_cm, @photo_path, @awake_after)`
     )
     .run(row)
   return db.prepare('SELECT * FROM events WHERE id = ?').get(info.lastInsertRowid)
@@ -404,6 +408,7 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
   const byDay = new Map()
   const weights = []
   const heights = []
+  const heads = []
   for (const e of rows) {
     const day = localDay(e.occurred_at)
     if (!byDay.has(day)) {
@@ -435,9 +440,11 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       weights.push({ occurred_at: e.occurred_at, date: day, weight_g: e.weight_g })
     } else if (e.type === 'height') {
       heights.push({ occurred_at: e.occurred_at, date: day, height_cm: e.height_cm })
+    } else if (e.type === 'head') {
+      heads.push({ occurred_at: e.occurred_at, date: day, head_cm: e.head_cm })
     }
   }
-  res.json({ days: [...byDay.values()], weights, heights })
+  res.json({ days: [...byDay.values()], weights, heights, heads })
 })
 
 // --- backup export ---
