@@ -1304,25 +1304,27 @@ async function loadSleep() {
     })
   }
 
-  // Today's stats: total sleep and the longest asleep stretch.
-  const todayRow = rows[0]
-  let awakeMs = 0
-  let longest = 0
-  let cursor = todayRow.ds
-  for (const [s, e] of awake) {
-    const cs = Math.max(s, todayRow.ds)
-    const ce = Math.min(e, todayRow.de)
-    if (ce <= cs) continue
-    awakeMs += ce - cs
-    longest = Math.max(longest, cs - cursor)
-    cursor = Math.max(cursor, ce)
+  // Sleep and longest asleep stretch within a day row.
+  const dayStats = (row) => {
+    let awakeMs = 0
+    let longest = 0
+    let cursor = row.ds
+    for (const [s, e] of awake) {
+      const cs = Math.max(s, row.ds)
+      const ce = Math.min(e, row.de)
+      if (ce <= cs) continue
+      awakeMs += ce - cs
+      longest = Math.max(longest, cs - cursor)
+      cursor = Math.max(cursor, ce)
+    }
+    return { sleepMs: row.de - row.ds - awakeMs, longest: Math.max(longest, row.de - cursor) }
   }
-  longest = Math.max(longest, todayRow.de - cursor)
-  const sleepMs = todayRow.de - todayRow.ds - awakeMs
+  rows.forEach((r) => Object.assign(r, dayStats(r)))
+  const { sleepMs, longest } = rows[0]
 
   const W = 520
   const LEFT = 46
-  const RIGHT = 8
+  const RIGHT = 44
   const TOP = 18
   const rowH = 16
   const gapY = 7
@@ -1355,6 +1357,7 @@ async function loadSleep() {
       const ce = Math.min(g.end, r.de)
       if (ce > cs) svg += `<rect x="${x(r, cs).toFixed(1)}" y="${y}" width="${(x(r, ce) - x(r, cs)).toFixed(1)}" height="${rowH}" fill="transparent" style="cursor:pointer" data-gap="${gi}"/>`
     })
+    svg += `<text x="${W - 2}" y="${y + rowH / 2 + 3}" text-anchor="end" font-size="9" fill="var(--muted)">${(r.sleepMs / 3600000).toFixed(1)}hr</text>`
   })
 
   el.innerHTML = `
