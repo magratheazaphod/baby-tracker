@@ -32,6 +32,22 @@ if (APP_SECRET === 'baby' && IS_PROD) {
 const app = express()
 app.use(express.json())
 
+// --- health ---
+
+// Unauthenticated so Fly's http check and an external uptime monitor can reach
+// it, which means it must reveal nothing personal — just {ok}. The SELECT is
+// the point: without it this would return 200 on a machine whose /data volume
+// failed to mount, while every real request 500s.
+app.get('/api/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get()
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('health check failed:', err.message)
+    res.status(503).json({ ok: false })
+  }
+})
+
 // --- auth: shared secret -> long-lived signed cookie identifying the parent ---
 
 function signUser(user) {

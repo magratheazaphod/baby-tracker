@@ -22,6 +22,16 @@ primary_region = "ord"
   auto_start_machines = true
   min_machines_running = 1
 
+  # Restarts the machine if the app stops answering or loses its database.
+  # Catches a wedged process; it can't tell you when the whole machine or
+  # region is down, so pair it with an external monitor (see README).
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
 [[vm]]
   size = "shared-cpu-1x"
   memory = "256mb"
