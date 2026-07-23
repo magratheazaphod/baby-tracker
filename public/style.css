@@ -82,6 +82,15 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Rapid taps on a button (e.g. the +/− stepper) otherwise trigger iOS
+   double-tap-to-zoom and the text-selection loupe. */
+button {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .hidden { display: none !important; }
 
 /* --- login --- */
