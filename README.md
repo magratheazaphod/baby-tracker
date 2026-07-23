@@ -16,14 +16,18 @@ disk, and runs the nudge checker. No accounts, no third-party services.
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/log.png" alt="Log view: one-tap buttons for breastfeeding, bottle, diapers, height, weight and head circumference" width="100%"></td>
-    <td><img src="docs/screenshots/timeline.png" alt="Timeline view: reverse-chronological entries grouped by day, filterable by type" width="100%"></td>
-    <td><img src="docs/screenshots/reports-feeding.png" alt="Reports view: stacked bar chart of daily bottle volume split by formula and breast milk" width="100%"></td>
-    <td><img src="docs/screenshots/sleep.png" alt="Sleep cycle view: per-day timeline of inferred asleep and awake stretches" width="100%"></td>
+    <td width="50%"><img src="docs/screenshots/log.png" alt="Log view: one-tap buttons for breastfeeding, bottle, diapers, height, weight and head circumference" width="100%"></td>
+    <td width="50%"><img src="docs/screenshots/timeline.png" alt="Timeline view: reverse-chronological entries grouped by day, filterable by type" width="100%"></td>
   </tr>
   <tr>
     <td align="center"><b>Log</b></td>
     <td align="center"><b>Timeline</b></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/reports-feeding.png" alt="Reports view: stacked bar chart of daily bottle volume split by formula and breast milk" width="100%"></td>
+    <td width="50%"><img src="docs/screenshots/sleep.png" alt="Sleep cycle view: per-day timeline of inferred asleep and awake stretches" width="100%"></td>
+  </tr>
+  <tr>
     <td align="center"><b>Reports</b></td>
     <td align="center"><b>Sleep cycle</b></td>
   </tr>
