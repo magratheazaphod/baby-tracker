@@ -37,6 +37,25 @@ if (APP_SECRET === 'baby' && IS_PROD) {
 const app = express()
 app.use(express.json())
 
+// --- request log ---
+
+// Shortcuts reports a failed voice log as "the network connection was lost" —
+// no status code, no body, nothing to inspect on the phone. An access line is
+// the only way to tell a request that never arrived from one that arrived and
+// whose response didn't make it home. Method, path, status, duration only:
+// never bodies, names, utterances or IPs, since these lines sit in Fly's log
+// stream. /api/health is skipped — the Fly check hits it constantly and would
+// bury everything else.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/') || req.path === '/api/health') return next()
+  const started = process.hrtime.bigint()
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - started) / 1e6
+    console.log(`${req.method} ${req.path} ${res.statusCode} ${ms.toFixed(0)}ms`)
+  })
+  next()
+})
+
 // --- health ---
 
 // Unauthenticated so Fly's http check and an external uptime monitor can reach

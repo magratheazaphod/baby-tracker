@@ -772,9 +772,43 @@ async function loadLastLogged() {
   }
 }
 
-async function loadRecent() {
+// Rows now arrive that this phone didn't create (voice logs, the other
+// parent), so the log view re-polls in the background. Repainting the list
+// rebuilds every entry element, which swallows a tap already in flight — so a
+// background repaint only happens when the content actually changed AND the
+// screen is calm. Foreground calls (nav, post-save) always repaint.
+let pointerIsDown = false
+let lastPointerAt = 0
+const QUIET_MS = 700
+document.addEventListener('pointerdown', () => { pointerIsDown = true; lastPointerAt = Date.now() }, true)
+document.addEventListener('pointerup', () => { pointerIsDown = false; lastPointerAt = Date.now() }, true)
+document.addEventListener('pointercancel', () => { pointerIsDown = false; lastPointerAt = Date.now() }, true)
+
+function screenIsCalm() {
+  if (!$('#sheet-backdrop').classList.contains('hidden')) return false // mid-edit
+  if (pointerIsDown) return false
+  return Date.now() - lastPointerAt > QUIET_MS
+}
+
+let recentSig = null
+let recentRepaintTimer = null
+
+async function loadRecent({ background = false } = {}) {
   loadLastLogged()
   const events = await api('/api/events?limit=5')
+  if (background && JSON.stringify(events) === recentSig) return // nothing new — leave the DOM alone
+  paintRecent(events, background)
+}
+
+// `deferrable` retries the paint (not the fetch) until the screen is calm, so
+// a finger-down or an open sheet postpones the repaint instead of stealing it.
+function paintRecent(events, deferrable) {
+  if (deferrable && !screenIsCalm()) {
+    clearTimeout(recentRepaintTimer)
+    recentRepaintTimer = setTimeout(() => paintRecent(events, true), QUIET_MS)
+    return
+  }
+  recentSig = JSON.stringify(events)
   const el = $('#last-entries')
   if (!events.length) {
     el.innerHTML = ''
@@ -1435,11 +1469,28 @@ async function enableNudges() {
 
 const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep }
 
-// The app often sits open on the log screen for hours — keep the
-// "last logged" stamps from going stale.
+// The app often sits open on the log screen for hours — keep the stamps AND
+// the Recent list from going stale. loadRecent() refreshes the stamps too.
 setInterval(() => {
-  if (!$('#view-log').classList.contains('hidden')) loadLastLogged()
+  if (!$('#view-log').classList.contains('hidden')) loadRecent({ background: true }).catch(() => {})
 }, 60000)
+
+// Coming back to a backgrounded tab is when the data is most likely stale and
+// when you'd notice — but focus and visibilitychange both fire on the same
+// return, hence the throttle.
+let lastRefreshAt = Date.now()
+function backgroundRefresh() {
+  if (document.visibilityState !== 'visible') return
+  if (!$('#sheet-backdrop').classList.contains('hidden')) return // don't yank a form out from under an edit
+  if (Date.now() - lastRefreshAt < 5000) return
+  lastRefreshAt = Date.now()
+  const active = document.querySelector('.nav-btn.active')?.dataset.view
+  if (!active) return // still on the login screen
+  if (active === 'log') loadRecent({ background: true }).catch(() => {})
+  else views[active]()
+}
+document.addEventListener('visibilitychange', backgroundRefresh)
+window.addEventListener('focus', backgroundRefresh)
 
 function switchView(name) {
   document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name))
@@ -1450,6 +1501,7 @@ function switchView(name) {
 
 function refreshAll() {
   autoMilestones = null // new logs can cross a fun-milestone threshold
+  lastRefreshAt = Date.now()
   const active = document.querySelector('.nav-btn.active').dataset.view
   views[active]()
 }
