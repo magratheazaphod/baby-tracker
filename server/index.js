@@ -25,6 +25,27 @@ const USER_NAMES = (process.env.USER_NAMES || 'Mom,Dad').split(',').map(s => s.t
 // through iCloud and get casually shared, so it must only be able to create
 // validated events — never read or export anything.
 const VOICE_TOKEN = process.env.VOICE_TOKEN || ''
+
+// iOS names phones with a curly apostrophe ("Alex’s iPhone"); a secret typed
+// by hand almost certainly has a straight one, and neither side shows which.
+function normalizeDeviceName(name) {
+  return String(name).trim().toLowerCase().replace(/[’‘`´]/g, "'").replace(/\s+/g, ' ')
+}
+
+// Maps a phone's name (Settings > General > About > Name) to the parent who
+// carries it, so one identical Shortcut can be AirDropped to every phone
+// instead of each copy hardcoding `user`. A duplicated Shortcut that kept the
+// original's name logs silently under the wrong parent — nobody notices for
+// weeks. Format: "Phone One:Name,Phone Two:Other". Entries naming someone
+// outside USER_NAMES are dropped, so a typo fails loudly at the first log
+// rather than inventing a parent.
+const DEVICE_USERS = new Map(
+  (process.env.DEVICE_USERS || '')
+    .split(',')
+    .map((pair) => pair.split(/:(.*)/s).slice(0, 2).map((s) => s.trim()))
+    .filter(([device, name]) => device && USER_NAMES.includes(name))
+    .map(([device, name]) => [normalizeDeviceName(device), name])
+)
 const COOKIE_SECRET =
   process.env.COOKIE_SECRET ||
   crypto.createHash('sha256').update(`cookie:${APP_SECRET}`).digest('hex')
@@ -383,7 +404,7 @@ function voiceRateLimit(req, res, next) {
 }
 
 app.post('/api/voice', voiceRateLimit, async (req, res) => {
-  const { text, user, lang, dry } = req.body || {}
+  const { text, user, lang, dry, device } = req.body || {}
   const l = langOf(lang)
   const fail = (status, key) => res.status(status).json({ ok: false, saved: [], speech: say(key, l) })
 
@@ -394,7 +415,19 @@ app.post('/api/voice', voiceRateLimit, async (req, res) => {
     const auth = req.headers.authorization
     if (!(auth?.startsWith('Bearer ') && voiceTokenOk(auth.slice(7)))) return fail(401, 'unauthorized')
   }
-  if (!USER_NAMES.includes(user)) return fail(400, 'unknownUser')
+  // An explicit `user` wins so Shortcuts built before the device map keep
+  // working; `device` is the path that lets every copy be byte-identical.
+  let who = USER_NAMES.includes(user) ? user : null
+  if (!who && typeof device === 'string' && device.trim()) {
+    who = DEVICE_USERS.get(normalizeDeviceName(device)) || null
+    if (!who) {
+      // The name itself stays out of the log stream; the phone speaks the
+      // failure and its owner can read the exact string off Settings.
+      console.log(`voice: unrecognized device (${DEVICE_USERS.size} configured)`)
+      return fail(400, 'unknownDevice')
+    }
+  }
+  if (!who) return fail(400, 'unknownUser')
   if (typeof text !== 'string' || !text.trim()) return fail(400, 'empty')
   if (text.length > 500) return fail(400, 'tooLong')
 
@@ -448,7 +481,7 @@ app.post('/api/voice', voiceRateLimit, async (req, res) => {
   }
 
   const saved = planned.map(({ event, at }) =>
-    insertEvent(event.type, { ...event, occurred_at: at.toISOString() }, user)
+    insertEvent(event.type, { ...event, occurred_at: at.toISOString() }, who)
   )
   res.json({ ok: true, saved, speech })
 })

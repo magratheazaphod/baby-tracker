@@ -189,6 +189,7 @@ export const SPEECH = {
   notSetUp: { en: "Voice logging isn't set up.", zh: '语音记录还没有设置。' },
   unauthorized: { en: "Sorry, that wasn't authorized.", zh: '抱歉，没有权限。' },
   unknownUser: { en: "I don't know who's logging that.", zh: '不知道是谁在记录。' },
+  unknownDevice: { en: "I don't know whose phone this is.", zh: '不知道这是谁的手机。' },
   unavailable: { en: "Voice logging isn't available right now.", zh: '语音记录暂时不可用。' },
   tooManyRequests: { en: 'Too many requests — try again in a bit.', zh: '请求太频繁了，请稍后再试。' },
   empty: { en: "I didn't hear anything.", zh: '没有听到内容。' },
