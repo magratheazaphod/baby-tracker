@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
 import { queueDiaperAnalysis } from './analyze.js'
+import { parseUtterance, outOfBounds, say, langOf, confirmation, duplicateWarning } from './voice.js'
 import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
 
 // Keep libvips lean: the Fly machine is small and uploads arrive one at a
@@ -20,6 +21,10 @@ const PORT = Number(process.env.PORT || 3000)
 const HOME_TZ = process.env.HOME_TZ || 'America/Los_Angeles'
 const APP_SECRET = process.env.APP_SECRET || 'baby'
 const USER_NAMES = (process.env.USER_NAMES || 'Mom,Dad').split(',').map(s => s.trim())
+// Deliberately NOT APP_SECRET: this one gets baked into Shortcuts that sync
+// through iCloud and get casually shared, so it must only be able to create
+// validated events — never read or export anything.
+const VOICE_TOKEN = process.env.VOICE_TOKEN || ''
 const COOKIE_SECRET =
   process.env.COOKIE_SECRET ||
   crypto.createHash('sha256').update(`cookie:${APP_SECRET}`).digest('hex')
@@ -325,6 +330,108 @@ app.delete('/api/events/:id', requireAuth, (req, res) => {
   if (existing.photo_path) removePhotoFile(existing.photo_path)
   db.prepare('DELETE FROM events WHERE id = ?').run(existing.id)
   res.json({ ok: true })
+})
+
+// --- voice ---
+//
+// Siri Shortcut -> dictated sentence -> parsed into events here -> spoken
+// confirmation back. See docs/siri-voice-logging.md for the Shortcut side.
+// Every outcome must produce a short speakable sentence: the Shortcut reads
+// `speech` and nothing else, so a bare error would be read aloud as JSON noise.
+
+function voiceTokenOk(candidate) {
+  const a = crypto.createHash('sha256').update(String(candidate ?? '')).digest()
+  const b = crypto.createHash('sha256').update(VOICE_TOKEN).digest()
+  return crypto.timingSafeEqual(a, b)
+}
+
+// Its own budget, separate from login: this endpoint is brute-forceable and
+// also burns API tokens. 30/15min is generous — parents log a dozen times a
+// day, never 30 times in a quarter of an hour.
+const voiceAttempts = new Map()
+function voiceRateLimit(req, res, next) {
+  const ip = req.headers['fly-client-ip'] || req.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  if (voiceAttempts.size > 10000) voiceAttempts.clear()
+  let rec = voiceAttempts.get(ip)
+  if (!rec || now > rec.reset) rec = { count: 0, reset: now + 15 * 60 * 1000 }
+  rec.count++
+  voiceAttempts.set(ip, rec)
+  if (rec.count > 30) {
+    return res.status(429).json({ ok: false, saved: [], speech: say('tooManyRequests', req.body?.lang) })
+  }
+  next()
+}
+
+app.post('/api/voice', voiceRateLimit, async (req, res) => {
+  const { text, user, lang, dry } = req.body || {}
+  const l = langOf(lang)
+  const fail = (status, key) => res.status(status).json({ ok: false, saved: [], speech: say(key, l) })
+
+  // No token configured means the feature is off — never fall back to
+  // accepting APP_SECRET here, or the scoping is theater.
+  if (!VOICE_TOKEN) return fail(200, 'notSetUp')
+  if (!currentUser(req)) {
+    const auth = req.headers.authorization
+    if (!(auth?.startsWith('Bearer ') && voiceTokenOk(auth.slice(7)))) return fail(401, 'unauthorized')
+  }
+  if (!USER_NAMES.includes(user)) return fail(400, 'unknownUser')
+  if (typeof text !== 'string' || !text.trim()) return fail(400, 'empty')
+  if (text.length > 500) return fail(400, 'tooLong')
+
+  let parsed
+  try {
+    parsed = await parseUtterance(text.trim())
+  } catch (err) {
+    console.error('voice parse failed:', err.message)
+    return res.json({ ok: false, saved: [], speech: say('unavailable', l) })
+  }
+
+  if (parsed.clarification) {
+    return res.json({ ok: false, saved: [], speech: parsed.clarification })
+  }
+  if (!parsed.events.length) return fail(200, 'notUnderstood')
+
+  // All-or-nothing: a partial save is confusing to undo by voice, so every
+  // event has to pass both the shared validator and the voice-only bounds
+  // before anything is written.
+  for (const event of parsed.events) {
+    if (validateEvent(event.type, event)) return fail(200, 'couldNotSave')
+    const bad = outOfBounds(event)
+    if (bad) return fail(200, bad)
+  }
+
+  const now = Date.now()
+  const planned = parsed.events.map((event) => {
+    const minutesAgo = Math.round(event.minutes_ago || 0)
+    return { event, minutesAgo, at: new Date(now - minutesAgo * 60000) }
+  })
+
+  // Look for near-duplicates before inserting, so our own rows don't match.
+  const since = new Date(now - 10 * 60 * 1000).toISOString()
+  const warnings = []
+  const warned = new Set()
+  for (const { event } of planned) {
+    if (warned.has(event.type)) continue
+    warned.add(event.type)
+    const prior = db
+      .prepare('SELECT MAX(occurred_at) AS occurred_at FROM events WHERE type = ? AND occurred_at >= ?')
+      .get(event.type, since)
+    if (prior?.occurred_at) {
+      const mins = Math.max(0, Math.round((now - Date.parse(prior.occurred_at)) / 60000))
+      warnings.push(duplicateWarning(event.type, mins, l))
+    }
+  }
+
+  const speech = confirmation(planned, l) + warnings.join('')
+  if (dry) {
+    return res.json({ ok: true, dry: true, saved: planned.map((p) => ({ ...p.event, occurred_at: p.at.toISOString() })), speech })
+  }
+
+  const saved = planned.map(({ event, at }) =>
+    insertEvent(event.type, { ...event, occurred_at: at.toISOString() }, user)
+  )
+  res.json({ ok: true, saved, speech })
 })
 
 // --- photos ---

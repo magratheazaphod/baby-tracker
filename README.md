@@ -141,6 +141,18 @@ Three layers:
    ```
    Run it on a schedule (cron/launchd) for continuous off-site copies.
 
+## Voice logging (optional)
+
+`POST /api/voice` takes a dictated sentence in English or Mandarin, parses it
+with Claude, saves the events, and returns a short spoken confirmation — so a
+parent can say "Hey Siri, Log Baby" and log a feed without touching anything.
+It needs `ANTHROPIC_API_KEY` plus its own `VOICE_TOKEN`
+(`fly secrets set -a your-app-name --stage VOICE_TOKEN="..."`, then deploy);
+with `VOICE_TOKEN` unset the endpoint is off. The token is deliberately
+separate from `APP_SECRET` and can only create events, never read or export.
+See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) to build the
+Shortcut.
+
 ## Environment variables
 
 | Var | Default | Purpose |
@@ -157,4 +169,5 @@ Three layers:
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated in dev | web-push credentials |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
-| `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos; without it, photos still work and analysis is skipped |
+| `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
+| `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging — see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
