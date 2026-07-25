@@ -44,6 +44,9 @@
     <main>
       <section id="view-log" class="view">
         <div class="log-grid">
+          <!-- No data-log: this one records instead of opening a sheet, and it
+               stays hidden until /api/config says transcription is configured. -->
+          <button class="log-btn voice-btn span6 hidden" id="voice-btn" aria-label="Log by voice"><span class="log-emoji">🎙️</span><span class="voice-label">Voice log</span></button>
           <button class="log-btn span6" data-log="breastfeed"><span class="log-emoji">🤱</span>Breastfeeding</button>
           <button class="log-btn span3" data-log="formula"><span class="log-emoji">🍼</span>Bottle</button>
           <button class="log-btn span3" data-log="pump"><span class="log-emoji">🫙</span>Pumping</button>

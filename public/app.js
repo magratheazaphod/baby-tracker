@@ -122,7 +122,9 @@ function describe(e) {
   }
 }
 
-function toast(msg, onTap) {
+// ms overrides the default dwell - spoken answers are a whole sentence and
+// need longer on screen than a "Saved 💜".
+function toast(msg, onTap, ms) {
   const el = $('#toast')
   el.textContent = msg
   el.onclick = onTap
@@ -134,7 +136,7 @@ function toast(msg, onTap) {
   el.style.cursor = onTap ? 'pointer' : ''
   el.classList.remove('hidden')
   clearTimeout(toast._t)
-  toast._t = setTimeout(() => el.classList.add('hidden'), onTap ? 5000 : 2200)
+  toast._t = setTimeout(() => el.classList.add('hidden'), ms || (onTap ? 5000 : 2200))
 }
 
 function fmtDur(ms) {
@@ -777,7 +779,7 @@ async function loadLastLogged() {
   try {
     const rows = await api('/api/events/latest')
     const byType = Object.fromEntries(rows.map((r) => [r.type, r.occurred_at]))
-    document.querySelectorAll('.log-btn').forEach((btn) => {
+    document.querySelectorAll('.log-btn[data-log]').forEach((btn) => {
       const last = byType[btn.dataset.log]
       let el = btn.querySelector('.log-last')
       if (!el) {
@@ -1565,7 +1567,122 @@ async function quickDiaper(kind) {
   }
 }
 
-document.querySelectorAll('.log-btn').forEach((b) => {
+// Voice logging from inside the app, following quickDiaper's rule: save
+// immediately, toast to undo, no confirm step. Tap to start, tap again to stop.
+//
+// The clip is transcribed server-side rather than by the browser's Web Speech
+// API, which takes a single `lang` per call - that would reproduce exactly the
+// Siri limitation this button exists to escape. Nothing is stored locally; the
+// audio goes straight up and is dropped once transcribed.
+
+// A pocket tap must not record until the battery dies.
+const VOICE_MAX_MS = 20000
+
+// Safari yields audio/mp4, Chrome audio/webm. Whatever the browser produces is
+// passed through as the upload's content type.
+function pickAudioMime() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+  return candidates.find((t) => MediaRecorder.isTypeSupported?.(t)) || ''
+}
+
+let voiceRec = null
+
+function setVoiceState(state, label) {
+  const btn = $('#voice-btn')
+  btn.classList.toggle('recording', state === 'recording')
+  btn.classList.toggle('busy', state === 'busy')
+  btn.disabled = state === 'busy'
+  btn.querySelector('.voice-label').textContent = label
+}
+
+function showVoiceResult(res) {
+  const saved = res.saved || []
+  if (!saved.length) {
+    // Failures, clarifications and answers to spoken questions all arrive as
+    // one short sentence that already reads correctly on screen. Answers need
+    // longer than the default toast to actually be read.
+    toast(res.speech, null, res.ok ? 6000 : 4000)
+    return
+  }
+  if (saved.length === 1) {
+    const e = saved[0]
+    const d = describe(e)
+    toast(`${d.emoji} ${d.title}${d.sub ? ` · ${d.sub}` : ''} saved · tap to edit`, () =>
+      openSheet(e.type, { existing: e })
+    )
+  } else {
+    toast(`✅ ${saved.length} entries saved · tap to view`, () => switchView('timeline'))
+  }
+  refreshAll()
+}
+
+async function recordUtterance() {
+  if (voiceRec) {
+    voiceRec.stop() // second tap stops it
+    return
+  }
+
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch {
+    // Denied permission is silent otherwise, and the fix is buried in Settings.
+    toast('Microphone blocked - allow it in Settings, then try again', null, 5000)
+    return
+  }
+
+  const stopTracks = () => stream.getTracks().forEach((t) => t.stop())
+  const mime = pickAudioMime()
+  let rec
+  try {
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+  } catch {
+    stopTracks()
+    toast("This browser can't record audio")
+    return
+  }
+
+  const chunks = []
+  rec.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data)
+  }
+
+  const startedAt = Date.now()
+  const tick = setInterval(() => {
+    const s = Math.floor((Date.now() - startedAt) / 1000)
+    setVoiceState('recording', `Stop · 0:${String(s).padStart(2, '0')}`)
+  }, 250)
+  const cap = setTimeout(() => {
+    if (rec.state === 'recording') rec.stop()
+  }, VOICE_MAX_MS)
+
+  rec.onstop = async () => {
+    clearInterval(tick)
+    clearTimeout(cap)
+    stopTracks()
+    voiceRec = null
+    setVoiceState('busy', 'Transcribing…')
+    try {
+      const blob = new Blob(chunks, { type: rec.mimeType || mime || 'audio/webm' })
+      if (!blob.size) throw new Error("I didn't hear anything")
+      const fd = new FormData()
+      fd.append('audio', blob, 'utterance')
+      showVoiceResult(await apiUpload('/api/voice/audio', fd))
+    } catch (err) {
+      toast(err.message)
+    } finally {
+      setVoiceState('idle', 'Voice log')
+    }
+  }
+
+  voiceRec = rec
+  rec.start()
+  setVoiceState('recording', 'Stop · 0:00')
+}
+
+$('#voice-btn').onclick = recordUtterance
+
+document.querySelectorAll('.log-btn[data-log]').forEach((b) => {
   b.onclick = () =>
     b.dataset.log === 'diaper' ? quickDiaper(b.dataset.kind) : openSheet(b.dataset.log, { kind: b.dataset.kind })
 })
@@ -1590,6 +1707,11 @@ async function boot() {
   $('#app').classList.remove('hidden')
   $('#whoami').textContent = cfg.user
   if (localStorage.getItem('nudgesEnabled')) $('#nudge-btn').classList.add('enabled')
+  // Needs both halves: a transcription key on the server and a browser that
+  // can actually reach a microphone (getUserMedia needs a secure context).
+  if (cfg.voiceInput && navigator.mediaDevices?.getUserMedia && window.MediaRecorder) {
+    $('#voice-btn').classList.remove('hidden')
+  }
   if (isIOS && !isStandalone && !localStorage.getItem('iosHintDismissed')) {
     $('#ios-hint').classList.remove('hidden')
   }
