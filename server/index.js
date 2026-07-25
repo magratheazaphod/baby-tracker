@@ -182,7 +182,7 @@ function requireAuth(req, res, next) {
 
 // --- events ---
 
-const TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'head', 'photo', 'milestone']
+const TYPES = ['breastfeed', 'formula', 'pump', 'diaper', 'weight', 'height', 'head', 'photo', 'milestone']
 const DIAPER_KINDS = ['pee', 'poop', 'both']
 // Bottle feeds keep the historical type name 'formula'; kind says what was in
 // the bottle. Rows from before the split have kind NULL and mean formula.
@@ -200,6 +200,9 @@ function validateEvent(type, body) {
     case 'formula':
       if (!(typeof body.amount_ml === 'number' && body.amount_ml > 0)) return 'Bottle needs an amount in ml'
       return body.kind == null || BOTTLE_KINDS.includes(body.kind) ? null : 'Bottle kind must be formula or breastmilk'
+    case 'pump':
+      if (!(typeof body.amount_ml === 'number' && body.amount_ml > 0)) return 'Pumping needs an amount in ml'
+      return num(body.duration_min) ? null : 'Bad duration'
     case 'diaper':
       return DIAPER_KINDS.includes(body.kind) ? null : 'Diaper needs a kind: pee, poop, or both'
     case 'weight':
@@ -218,6 +221,7 @@ function validateEvent(type, body) {
 const FIELDS_BY_TYPE = {
   breastfeed: ['duration_min', 'awake_after'],
   formula: ['amount_ml', 'awake_after', 'kind'],
+  pump: ['amount_ml', 'duration_min'],
   diaper: ['kind'],
   weight: ['weight_g'],
   height: ['height_cm'],
@@ -594,6 +598,8 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
         formulaCount: 0,
         formulaMl: 0,
         breastmilkMl: 0,
+        pumpCount: 0,
+        pumpedMl: 0,
         pee: 0,
         poop: 0,
       })
@@ -608,6 +614,9 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       d.formulaCount++
       d.formulaMl += e.amount_ml || 0
       if (e.kind === 'breastmilk') d.breastmilkMl += e.amount_ml || 0
+    } else if (e.type === 'pump') {
+      d.pumpCount++
+      d.pumpedMl += e.amount_ml || 0
     } else if (e.type === 'diaper') {
       if (e.kind === 'pee' || e.kind === 'both') d.pee++
       if (e.kind === 'poop' || e.kind === 'both') d.poop++

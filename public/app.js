@@ -100,6 +100,8 @@ function describe(e) {
       return { emoji: '🤱', title: 'Breastfeeding', sub: e.duration_min ? `${e.duration_min} min` : '' }
     case 'formula':
       return { emoji: '🍼', title: `Bottle · ${e.kind === 'breastmilk' ? 'Breast milk' : 'Formula'}`, sub: `${e.amount_ml} ml` }
+    case 'pump':
+      return { emoji: '🫙', title: 'Pumping', sub: `${e.amount_ml} ml${e.duration_min ? ` · ${e.duration_min} min` : ''}` }
     case 'diaper': {
       const label = { pee: 'Pee', poop: 'Poop', both: 'Pee + poop' }[e.kind] || e.kind
       const emoji = { pee: '💧', poop: '💩', both: '💧💩' }[e.kind] || '💧'
@@ -233,6 +235,7 @@ function openSheet(type, { kind, existing } = {}) {
   const titles = {
     breastfeed: '🤱 Breastfeeding',
     formula: '🍼 Bottle',
+    pump: '🫙 Pumping',
     diaper: '💧 Diaper',
     weight: '⚖️ Weight',
     height: '📏 Height',
@@ -265,6 +268,18 @@ function openSheet(type, { kind, existing } = {}) {
           <button type="button" data-step="1">+</button>
         </div>
       </label>
+      ${fieldNotes(existing?.notes)}`
+  } else if (type === 'pump') {
+    const last = existing?.amount_ml ?? Number(localStorage.getItem('lastPumpMl') || 60)
+    fields = `${fieldTime(timeVal)}
+      <label>Amount pumped (ml)
+        <div class="stepper">
+          <button type="button" data-step="-1">−</button>
+          <input type="number" name="amount_ml" inputmode="numeric" min="5" step="5" value="${last}" required>
+          <button type="button" data-step="1">+</button>
+        </div>
+      </label>
+      <label>Duration in minutes (optional)<input type="number" name="duration_min" inputmode="numeric" min="1" step="1" value="${existing?.duration_min ?? ''}"></label>
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'diaper') {
     const selected = existing?.kind || kind || 'pee'
@@ -343,10 +358,10 @@ function openSheet(type, { kind, existing } = {}) {
 
   // Anticipate the formula amount: default to whatever the last formula feed
   // was (from the server, so it syncs across both phones).
-  if (type === 'formula' && !existing) {
+  if ((type === 'formula' || type === 'pump') && !existing) {
     const amountInput = sheet.querySelector('[name=amount_ml]')
     amountInput.addEventListener('input', () => (amountInput.dataset.touched = '1'))
-    api('/api/events?limit=1&type=formula')
+    api(`/api/events?limit=1&type=${type}`)
       .then((rows) => {
         if (rows[0]?.amount_ml && !amountInput.dataset.touched && sheet.contains(amountInput)) {
           amountInput.value = rows[0].amount_ml
@@ -524,6 +539,11 @@ function openSheet(type, { kind, existing } = {}) {
           body.kind = fd.get('kind') || 'formula'
           localStorage.setItem('lastFormulaMl', body.amount_ml)
           localStorage.setItem('lastBottleKind', body.kind)
+        }
+        if (type === 'pump') {
+          body.amount_ml = Number(fd.get('amount_ml'))
+          body.duration_min = fd.get('duration_min') ? Number(fd.get('duration_min')) : null
+          localStorage.setItem('lastPumpMl', body.amount_ml)
         }
         if (type === 'diaper') body.kind = fd.get('kind')
         if (type === 'weight') {
@@ -825,6 +845,8 @@ const SERIES = {
   breastmilk: { label: 'Breast milk', color: 'var(--c-breastfeed)' },
   bottle: { label: 'Bottle', color: 'var(--c-formula)' },
   breastfeed: { label: 'Breastfeeding', color: 'var(--c-breastfeed)' },
+  // Pumped milk is breast milk, so it keeps the breastfeeding colour.
+  pump: { label: 'Pumped', color: 'var(--c-breastfeed)' },
   pee: { label: 'Pee', color: 'var(--c-pee)' },
   poop: { label: 'Poop', color: 'var(--c-poop)' },
 }
@@ -1134,7 +1156,7 @@ function fillDays(days) {
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     out.push(
-      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pee: 0, poop: 0 }
+      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
     )
     if (key >= today) break
     cursor.setDate(cursor.getDate() + 1)
@@ -1151,7 +1173,7 @@ async function loadReports() {
   }
   const days = fillDays(rawDays)
   const todayKey = dayKey(new Date().toISOString())
-  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, pee: 0, poop: 0 }
+  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
   const lastWeight = weights[weights.length - 1]
 
   const unit = localStorage.getItem('weightUnit') || 'lb'
@@ -1160,6 +1182,7 @@ async function loadReports() {
   const tilesHtml = `<div class="tiles">
     <div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>
     <div class="tile"><div class="tile-label">🍼 Bottle today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}${today.breastmilkMl ? ` · ${today.breastmilkMl} ml breast milk` : ''}</div></div>
+    ${days.some((d) => d.pumpedMl > 0) ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${today.pumpCount} session${today.pumpCount === 1 ? '' : 's'}</div></div>` : ''}
     <div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>
     <div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>
   </div>`
@@ -1169,6 +1192,10 @@ async function loadReports() {
     feedingHtml += chartCard('Bottle per day', 'ml by bottle — formula vs pumped breast milk', ['formula', 'breastmilk'],
       barChart(days, ['formula', 'breastmilk'],
         (d, k) => (k === 'breastmilk' ? d.breastmilkMl || 0 : d.formulaMl - (d.breastmilkMl || 0)), (v) => `${v} ml`))
+  }
+  if (days.some((d) => d.pumpedMl > 0)) {
+    feedingHtml += chartCard('Pumped per day', 'ml expressed by pumping', ['pump'],
+      barChart(days, ['pump'], (d) => d.pumpedMl || 0, (v) => `${v} ml`))
   }
   feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],
     barChart(days, ['breastfeed', 'bottle'], (d, k) => (k === 'breastfeed' ? d.breastfeedCount : d.formulaCount), (v) => `${v}`))

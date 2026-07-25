@@ -29,7 +29,7 @@ const db = new Database(dbPath)
 db.exec(`
 CREATE TABLE events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','diaper','weight','height','head','photo','milestone')),
+  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','pump','diaper','weight','height','head','photo','milestone')),
   occurred_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   notes TEXT,
