@@ -71,6 +71,50 @@ const LOG_EVENTS_TOOL = {
   },
 }
 
+// Questions ("how long since she ate?") ride the same button and the same
+// parse. The model's only job here is to pick an intent from this fixed set -
+// it never states a figure, because a number invented from the transcript or
+// from memory would be indistinguishable from a real one. The server computes
+// every value it speaks.
+const QUERY_INTENTS = ['last_feed', 'last_diaper', 'totals_today', 'latest_measurement', 'unsupported']
+
+const ANSWER_QUESTION_TOOL = {
+  name: 'answer_question',
+  description:
+    'Classify a QUESTION the parent asked about the baby. Use this instead of log_events whenever ' +
+    'the utterance asks for information rather than recording something that happened.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      intent: {
+        type: 'string',
+        enum: QUERY_INTENTS,
+        description:
+          'last_feed: when the baby last ate. last_diaper: the most recent diaper change. ' +
+          'totals_today: how much or how many so far today. latest_measurement: the latest ' +
+          'weight, height or head circumference, with its percentile. ' +
+          'unsupported: any other question, INCLUDING anything about sleep or naps.',
+      },
+      feed_type: {
+        type: 'string',
+        enum: ['breastfeed', 'bottle', 'any'],
+        description: 'last_feed only. Use "any" unless the parent named one specifically.',
+      },
+      diaper_kind: {
+        type: 'string',
+        enum: ['pee', 'poop', 'any'],
+        description: 'last_diaper only. Use "any" unless the parent asked about wet or dirty specifically.',
+      },
+      measurement: {
+        type: 'string',
+        enum: ['weight', 'height', 'head'],
+        description: 'latest_measurement only.',
+      },
+    },
+    required: ['intent'],
+  },
+}
+
 function localNowLine() {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: HOME_TZ,
@@ -86,8 +130,11 @@ function localNowLine() {
 }
 
 function prompt(text) {
-  return `You turn a parent's spoken sentence about their newborn into structured log entries.
-Call the log_events tool exactly once. Never reply with prose.
+  return `You turn a parent's spoken sentence about their newborn into either structured
+log entries or a classified question. Call exactly one tool, once. Never reply with prose.
+
+- The sentence RECORDS something that happened -> log_events.
+- The sentence ASKS for information -> answer_question.
 
 ${localNowLine()}
 
@@ -134,28 +181,54 @@ OTHER RULES:
 - If the utterance is not about baby care at all, or you cannot tell what was
   logged, set clarification and no events.
 
+QUESTIONS - use answer_question, and pick the intent only; never answer from the
+sentence itself, and never guess a number. The app computes every figure.
+- "when did she last eat?" / "how long since she ate?" / 上次什么时候吃的 /
+  多久没吃了 -> last_feed
+- "when was her last diaper?" / 上次什么时候换的尿布 -> last_diaper
+- "how much has she had today?" / "how many diapers today?" / 今天喝了多少 /
+  今天拉了几次 -> totals_today
+- "how much does she weigh?" / "what percentile is she?" / 她多重 / 体重多少 /
+  百分位是多少 -> latest_measurement
+- Anything else you cannot answer from that list -> unsupported. Sleep and nap
+  questions ("how long has she been asleep?" / 睡了多久) are ALWAYS unsupported.
+
 The parent said: "${text}"`
 }
 
-// Returns { events } or { clarification }. Throws on API/credential failure so
-// the caller can speak the "not available right now" line.
+// Returns { events } or { clarification } or { query }. Throws on API/credential
+// failure so the caller can speak the "not available right now" line.
 export async function parseUtterance(text) {
   const res = await client.messages.create({
     model: MODEL,
     max_tokens: 1024,
     thinking: { type: 'disabled' },
     output_config: { effort: 'low' },
-    tools: [LOG_EVENTS_TOOL],
-    tool_choice: { type: 'tool', name: 'log_events' },
+    tools: [LOG_EVENTS_TOOL, ANSWER_QUESTION_TOOL],
+    // "any" rather than a named tool: the model picks which of the two, but is
+    // still forced into one of them, so prose can never come back.
+    tool_choice: { type: 'any' },
     messages: [{ role: 'user', content: prompt(text) }],
   })
   const block = res.content.find((b) => b.type === 'tool_use')
-  if (!block) return { clarification: null, events: [] }
+  if (!block) return { clarification: null, events: [], query: null }
   const input = block.input || {}
+  if (block.name === ANSWER_QUESTION_TOOL.name) {
+    return {
+      events: [],
+      clarification: null,
+      query: {
+        intent: QUERY_INTENTS.includes(input.intent) ? input.intent : 'unsupported',
+        feed_type: input.feed_type || 'any',
+        diaper_kind: input.diaper_kind || 'any',
+        measurement: input.measurement || 'weight',
+      },
+    }
+  }
   const events = Array.isArray(input.events) ? input.events.slice(0, 3) : []
   const clarification = typeof input.clarification === 'string' ? input.clarification.trim() : ''
-  if (!events.length) return { events: [], clarification: clarification || null }
-  return { events: events.map(round), clarification: null }
+  if (!events.length) return { events: [], clarification: clarification || null, query: null }
+  return { events: events.map(round), clarification: null, query: null }
 }
 
 // Unit conversion leaves noise the parent never said — "four ounces" comes back
@@ -193,7 +266,6 @@ export const SPEECH = {
   notSetUp: { en: "Voice logging isn't set up.", zh: '语音记录还没有设置。' },
   unauthorized: { en: "Sorry, that wasn't authorized.", zh: '抱歉，没有权限。' },
   unknownUser: { en: "I don't know who's logging that.", zh: '不知道是谁在记录。' },
-  unknownDevice: { en: "I don't know whose phone this is.", zh: '不知道这是谁的手机。' },
   unavailable: { en: "Voice logging isn't available right now.", zh: '语音记录暂时不可用。' },
   tooManyRequests: { en: 'Too many requests — try again in a bit.', zh: '请求太频繁了，请稍后再试。' },
   empty: { en: "I didn't hear anything.", zh: '没有听到内容。' },
@@ -227,10 +299,27 @@ export const SPEECH = {
     en: 'That was too far back to log by voice — add it in the app instead.',
     zh: '时间太久以前了，请在应用里补记。',
   },
+  // The Shortcut's token can create events and nothing else. That create-only
+  // scope is why a leaked Shortcut is survivable, so a question arriving on it
+  // is refused rather than answered - questions read data.
+  queriesInAppOnly: {
+    en: 'I can only answer questions in the app, not from a Shortcut.',
+    zh: '问题只能在应用里回答，快捷指令不行。',
+  },
+  cannotAnswer: { en: "I can't answer that one yet.", zh: '这个问题我还不会回答。' },
 }
 
 export const langOf = (lang) => (lang === 'zh' ? 'zh' : 'en')
 export const say = (key, lang) => SPEECH[key][langOf(lang)]
+
+// Which language to reply in, taken from the transcript's own script. The mic
+// button has no language picker by design - declaring one up front is exactly
+// the Siri limitation this feature exists to escape - so Han characters
+// anywhere in the sentence mean answer in Chinese. A code-switched sentence
+// ("120 ml 的奶") is therefore treated as Chinese, which is what the parent
+// who said it expects to read back.
+export const scriptLang = (text) =>
+  /[\u3400-\u4dbf\u4e00-\u9fff]/.test(String(text || '')) ? 'zh' : 'en'
 
 const JUST_NOW = { en: 'just now', zh: '刚刚' }
 const LOGGED = { en: 'Logged: ', zh: '已记录：' }
@@ -291,6 +380,8 @@ function describeEvent(event, lang) {
   const l = langOf(lang)
   switch (event.type) {
     case 'breastfeed':
+      // Duration is optional, and answers replay rows logged months ago.
+      if (!event.duration_min) return l === 'zh' ? '亲喂' : 'breastfeed'
       return l === 'zh' ? `亲喂 ${event.duration_min} 分钟` : `breastfeed, ${event.duration_min} min`
     case 'formula': {
       const milk = event.kind === 'breastmilk'
@@ -333,4 +424,125 @@ export function duplicateWarning(type, minutes, lang) {
   return l === 'zh'
     ? `注意：${minutes} 分钟前也记过一次${noun}。`
     : ` Note, a ${noun} was also logged ${minutes} minute${minutes === 1 ? '' : 's'} ago.`
+}
+
+// --- answers ---
+//
+// The mirror of confirmation(): the caller hands over rows and figures it read
+// out of the database, and this turns them into one short sentence. Same rule
+// applies - every number here came from a query, never from the model.
+
+function agoPhrase(minutes, lang) {
+  const l = langOf(lang)
+  const m = Math.max(0, Math.round(minutes))
+  if (m < 1) return l === 'zh' ? '刚刚' : 'just now'
+  if (m < 60) return l === 'zh' ? `${m} 分钟前` : `${m} minute${m === 1 ? '' : 's'} ago`
+  // Past two days a running hour count stops meaning anything to a tired parent.
+  if (m >= 48 * 60) {
+    const d = Math.round(m / 1440)
+    return l === 'zh' ? `${d} 天前` : `${d} days ago`
+  }
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  if (l === 'zh') return rem ? `${h} 小时 ${rem} 分钟前` : `${h} 小时前`
+  const hr = `${h} hour${h === 1 ? '' : 's'}`
+  return rem ? `${hr} ${rem} minute${rem === 1 ? '' : 's'} ago` : `${hr} ago`
+}
+
+// Matches fmtWeight/fmtHeight in public/app.js, so an answer and the reports
+// screen never state the same measurement two different ways. Chinese gets 斤,
+// the unit this household actually uses for a baby's weight.
+function measurementPhrase(type, event, l) {
+  if (type === 'weight') {
+    const g = event.weight_g
+    if (l === 'zh') return `${(g / 1000).toFixed(2)} 公斤（${(g / 500).toFixed(1)} 斤）`
+    const totalOz = g / 28.3495
+    const lb = Math.floor(totalOz / 16)
+    const oz = Math.round((totalOz % 16) * 10) / 10
+    return `${(g / 1000).toFixed(2)} kg (${lb} lb ${oz} oz)`
+  }
+  const cm = type === 'height' ? event.height_cm : event.head_cm
+  return l === 'zh' ? `${cm.toFixed(1)} 厘米` : `${cm.toFixed(1)} cm (${(cm / 2.54).toFixed(1)} in)`
+}
+
+function percentilePhrase(p, l) {
+  if (p == null) return ''
+  if (p < 1) return l === 'zh' ? '低于第 1 百分位' : 'below the 1st percentile'
+  if (p > 99) return l === 'zh' ? '高于第 99 百分位' : 'above the 99th percentile'
+  const n = Math.round(p)
+  if (l === 'zh') return `第 ${n} 百分位`
+  const teen = n % 100 >= 11 && n % 100 <= 13
+  const last = n % 10
+  const suffix = teen ? 'th' : last === 1 ? 'st' : last === 2 ? 'nd' : last === 3 ? 'rd' : 'th'
+  return `${n}${suffix} percentile`
+}
+
+const MEASUREMENT_NOUN = {
+  weight: { en: 'weight', zh: '体重' },
+  height: { en: 'height', zh: '身高' },
+  head: { en: 'head circumference', zh: '头围' },
+}
+
+const NOTHING_YET = {
+  last_feed: { en: 'No feed logged yet.', zh: '还没有喂奶记录。' },
+  last_diaper: { en: 'No diaper logged yet.', zh: '还没有尿布记录。' },
+  totals_today: { en: 'Nothing logged today yet.', zh: '今天还没有记录。' },
+}
+
+// result is whatever the caller's query produced; see answerQuery in
+// server/index.js for each intent's shape.
+export function answer(result, lang) {
+  const l = langOf(lang)
+  switch (result.intent) {
+    case 'last_feed': {
+      if (!result.event) return NOTHING_YET.last_feed[l]
+      const what = describeEvent(result.event, l)
+      const when = agoPhrase(result.minutesAgo, l)
+      return l === 'zh' ? `上次喂奶：${what}，${when}。` : `Last feed: ${what}, ${when}.`
+    }
+    case 'last_diaper': {
+      if (!result.event) return NOTHING_YET.last_diaper[l]
+      const what = DIAPER_DESC[result.event.kind]?.[l] || TYPE_NOUN.diaper[l]
+      const when = agoPhrase(result.minutesAgo, l)
+      return l === 'zh' ? `上次换尿布：${what}，${when}。` : `Last diaper: ${what}, ${when}.`
+    }
+    case 'totals_today': {
+      const t = result.totals
+      const parts = []
+      if (l === 'zh') {
+        if (t.breastfeedCount) {
+          parts.push(`亲喂 ${t.breastfeedCount} 次${t.breastfeedMin ? ` 共 ${t.breastfeedMin} 分钟` : ''}`)
+        }
+        if (t.bottleCount) parts.push(`瓶喂 ${t.bottleCount} 次 共 ${t.bottleMl} 毫升`)
+        if (t.pumpCount) parts.push(`吸奶 ${t.pumpCount} 次 共 ${t.pumpedMl} 毫升`)
+        if (t.pee || t.poop) parts.push(`尿 ${t.pee} 次，便 ${t.poop} 次`)
+        return parts.length ? `今天到现在：${parts.join('，')}。` : NOTHING_YET.totals_today.zh
+      }
+      if (t.breastfeedCount) {
+        const min = t.breastfeedMin ? ` for ${t.breastfeedMin} min` : ''
+        parts.push(`${t.breastfeedCount} breastfeed${t.breastfeedCount === 1 ? '' : 's'}${min}`)
+      }
+      if (t.bottleCount) {
+        parts.push(`${t.bottleCount} bottle${t.bottleCount === 1 ? '' : 's'} totalling ${t.bottleMl} ml`)
+      }
+      if (t.pumpCount) {
+        parts.push(`${t.pumpCount} pumping session${t.pumpCount === 1 ? '' : 's'} for ${t.pumpedMl} ml`)
+      }
+      if (t.pee || t.poop) parts.push(`${t.pee} wet and ${t.poop} dirty`)
+      return parts.length ? `Today so far: ${parts.join(', ')}.` : NOTHING_YET.totals_today.en
+    }
+    case 'latest_measurement': {
+      const noun = MEASUREMENT_NOUN[result.measurement][l]
+      if (!result.event) {
+        return l === 'zh' ? `还没有${noun}记录。` : `No ${noun} logged yet.`
+      }
+      const value = measurementPhrase(result.measurement, result.event, l)
+      const pct = percentilePhrase(result.percentile, l)
+      const when = agoPhrase(result.minutesAgo, l)
+      if (l === 'zh') return `最近一次${noun}：${value}${pct ? `，${pct}` : ''}，${when}。`
+      return `Latest ${noun}: ${value}${pct ? `, ${pct}` : ''}, measured ${when}.`
+    }
+    default:
+      return say('cannotAnswer', l)
+  }
 }

@@ -253,6 +253,30 @@ nav {
   color: var(--muted);
   margin-top: -2px;
 }
+.voice-btn {
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 8px;
+}
+.voice-btn .log-emoji { font-size: 26px; }
+.voice-label { font-variant-numeric: tabular-nums; }
+/* No --danger-soft token; derive the tint inline so light/dark stay in sync. */
+.voice-btn.recording {
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.voice-btn.recording .log-emoji { animation: voice-pulse 1.4s ease-in-out infinite; }
+@keyframes voice-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.15); } }
+/* Color/border already read as recording; the pulse is decoration, not required. */
+@media (prefers-reduced-motion: reduce) {
+  .voice-btn.recording .log-emoji { animation: none; }
+}
+.voice-btn.busy {
+  opacity: 0.6;
+  cursor: default;
+}
 
 .last-entries { margin-top: 22px; }
 .last-entries h3 {

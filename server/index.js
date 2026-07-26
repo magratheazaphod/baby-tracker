@@ -8,7 +8,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
 import { queueDiaperAnalysis } from './analyze.js'
-import { parseUtterance, outOfBounds, say, langOf, confirmation, duplicateWarning } from './voice.js'
+import { parseUtterance, outOfBounds, say, langOf, confirmation, duplicateWarning, answer, scriptLang } from './voice.js'
+import { transcribeAudio, transcribeConfigured } from './transcribe.js'
+import { percentileFor } from './growth.js'
 import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
 
 // Keep libvips lean: the Fly machine is small and uploads arrive one at a
@@ -26,26 +28,6 @@ const USER_NAMES = (process.env.USER_NAMES || 'Mom,Dad').split(',').map(s => s.t
 // validated events — never read or export anything.
 const VOICE_TOKEN = process.env.VOICE_TOKEN || ''
 
-// iOS names phones with a curly apostrophe ("Alex’s iPhone"); a secret typed
-// by hand almost certainly has a straight one, and neither side shows which.
-function normalizeDeviceName(name) {
-  return String(name).trim().toLowerCase().replace(/[’‘`´]/g, "'").replace(/\s+/g, ' ')
-}
-
-// Maps a phone's name (Settings > General > About > Name) to the parent who
-// carries it, so one identical Shortcut can be AirDropped to every phone
-// instead of each copy hardcoding `user`. A duplicated Shortcut that kept the
-// original's name logs silently under the wrong parent — nobody notices for
-// weeks. Format: "Phone One:Name,Phone Two:Other". Entries naming someone
-// outside USER_NAMES are dropped, so a typo fails loudly at the first log
-// rather than inventing a parent.
-const DEVICE_USERS = new Map(
-  (process.env.DEVICE_USERS || '')
-    .split(',')
-    .map((pair) => pair.split(/:(.*)/s).slice(0, 2).map((s) => s.trim()))
-    .filter(([device, name]) => device && USER_NAMES.includes(name))
-    .map(([device, name]) => [normalizeDeviceName(device), name])
-)
 const COOKIE_SECRET =
   process.env.COOKIE_SECRET ||
   crypto.createHash('sha256').update(`cookie:${APP_SECRET}`).digest('hex')
@@ -170,6 +152,9 @@ app.get('/api/config', (req, res) => {
     babySex: ['boy', 'girl'].includes(process.env.BABY_SEX) ? process.env.BABY_SEX : null,
     appName: process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker',
     vapidPublicKey: vapidKeys.publicKey,
+    // Hides the mic button when no transcription key is configured. Safe to
+    // expose: this branch is already behind a valid login cookie.
+    voiceInput: transcribeConfigured(),
   })
 })
 
@@ -389,49 +374,121 @@ function voiceTokenOk(candidate) {
   return crypto.timingSafeEqual(a, b)
 }
 
-// Its own budget, separate from login: this endpoint is brute-forceable and
-// also burns API tokens. 30/15min is generous — parents log a dozen times a
-// day, never 30 times in a quarter of an hour.
+// Its own budget, separate from login: these endpoints are brute-forceable and
+// burn API tokens on every call. Keyed on the logged-in parent when there is
+// one - both parents share the home wifi, so a per-IP ceiling is really a
+// per-household ceiling, and the in-app mic makes voice a primary way to log
+// rather than the occasional Shortcut the old 30 assumed.
 const voiceAttempts = new Map()
 function voiceRateLimit(req, res, next) {
-  const ip = req.headers['fly-client-ip'] || req.socket.remoteAddress || 'unknown'
+  const key = currentUser(req) || req.headers['fly-client-ip'] || req.socket.remoteAddress || 'unknown'
   const now = Date.now()
   if (voiceAttempts.size > 10000) voiceAttempts.clear()
-  let rec = voiceAttempts.get(ip)
+  let rec = voiceAttempts.get(key)
   if (!rec || now > rec.reset) rec = { count: 0, reset: now + 15 * 60 * 1000 }
   rec.count++
-  voiceAttempts.set(ip, rec)
-  if (rec.count > 30) {
+  voiceAttempts.set(key, rec)
+  if (rec.count > 60) {
     return res.status(429).json({ ok: false, saved: [], speech: say('tooManyRequests', req.body?.lang) })
   }
   next()
 }
 
-app.post('/api/voice', voiceRateLimit, async (req, res) => {
-  const { text, user, lang, dry, device } = req.body || {}
-  const l = langOf(lang)
-  const fail = (status, key) => res.status(status).json({ ok: false, saved: [], speech: say(key, l) })
+// The model classified the question; every figure below comes out of the
+// database. Nothing here is ever taken from the transcript or from the model,
+// because a made-up number and a real one read identically out loud.
+function answerQuery(query) {
+  const now = Date.now()
+  const minutesSince = (iso) => Math.max(0, (now - Date.parse(iso)) / 60000)
+  const placeholders = (list) => list.map(() => '?').join(',')
 
-  // No token configured means the feature is off — never fall back to
-  // accepting APP_SECRET here, or the scoping is theater.
-  if (!VOICE_TOKEN) return fail(200, 'notSetUp')
-  if (!currentUser(req)) {
-    const auth = req.headers.authorization
-    if (!(auth?.startsWith('Bearer ') && voiceTokenOk(auth.slice(7)))) return fail(401, 'unauthorized')
-  }
-  // An explicit `user` wins so Shortcuts built before the device map keep
-  // working; `device` is the path that lets every copy be byte-identical.
-  let who = USER_NAMES.includes(user) ? user : null
-  if (!who && typeof device === 'string' && device.trim()) {
-    who = DEVICE_USERS.get(normalizeDeviceName(device)) || null
-    if (!who) {
-      // The name itself stays out of the log stream; the phone speaks the
-      // failure and its owner can read the exact string off Settings.
-      console.log(`voice: unrecognized device (${DEVICE_USERS.size} configured)`)
-      return fail(400, 'unknownDevice')
+  switch (query.intent) {
+    case 'last_feed': {
+      const types =
+        query.feed_type === 'breastfeed' ? ['breastfeed']
+        : query.feed_type === 'bottle' ? ['formula']
+        : ['breastfeed', 'formula']
+      const event = db
+        .prepare(`SELECT * FROM events WHERE type IN (${placeholders(types)}) ORDER BY occurred_at DESC LIMIT 1`)
+        .get(...types)
+      return { intent: 'last_feed', event, minutesAgo: event ? minutesSince(event.occurred_at) : 0 }
     }
+    case 'last_diaper': {
+      // 'both' satisfies a question about either wet or dirty.
+      const kinds =
+        query.diaper_kind === 'pee' ? ['pee', 'both']
+        : query.diaper_kind === 'poop' ? ['poop', 'both']
+        : ['pee', 'poop', 'both']
+      const event = db
+        .prepare(
+          `SELECT * FROM events WHERE type = 'diaper' AND kind IN (${placeholders(kinds)})
+           ORDER BY occurred_at DESC LIMIT 1`
+        )
+        .get(...kinds)
+      return { intent: 'last_diaper', event, minutesAgo: event ? minutesSince(event.occurred_at) : 0 }
+    }
+    case 'totals_today': {
+      // localDay is the reports view's HOME_TZ day boundary - the one place
+      // day math lives, so an answer and the Reports screen always agree.
+      const today = localDay(new Date().toISOString())
+      const rows = db
+        .prepare('SELECT * FROM events WHERE occurred_at >= ?')
+        .all(new Date(now - 48 * 3600 * 1000).toISOString())
+      const totals = {
+        breastfeedCount: 0, breastfeedMin: 0,
+        bottleCount: 0, bottleMl: 0,
+        pumpCount: 0, pumpedMl: 0,
+        pee: 0, poop: 0,
+      }
+      for (const e of rows) {
+        if (localDay(e.occurred_at) !== today) continue
+        if (e.type === 'breastfeed') {
+          totals.breastfeedCount++
+          totals.breastfeedMin += e.duration_min || 0
+        } else if (e.type === 'formula') {
+          totals.bottleCount++
+          totals.bottleMl += e.amount_ml || 0
+        } else if (e.type === 'pump') {
+          totals.pumpCount++
+          totals.pumpedMl += e.amount_ml || 0
+        } else if (e.type === 'diaper') {
+          if (e.kind === 'pee' || e.kind === 'both') totals.pee++
+          if (e.kind === 'poop' || e.kind === 'both') totals.poop++
+        }
+      }
+      return { intent: 'totals_today', totals }
+    }
+    case 'latest_measurement': {
+      const type = ['weight', 'height', 'head'].includes(query.measurement) ? query.measurement : 'weight'
+      const event = db.prepare('SELECT * FROM events WHERE type = ? ORDER BY occurred_at DESC LIMIT 1').get(type)
+      // WHO tables are in kg and cm; weight is stored in grams.
+      const value =
+        !event ? null
+        : type === 'weight' ? event.weight_g / 1000
+        : type === 'height' ? event.height_cm
+        : event.head_cm
+      return {
+        intent: 'latest_measurement',
+        measurement: type,
+        event,
+        minutesAgo: event ? minutesSince(event.occurred_at) : 0,
+        percentile: event ? percentileFor(type, value, event.occurred_at) : null,
+      }
+    }
+    default:
+      return { intent: 'unsupported' }
   }
-  if (!who) return fail(400, 'unknownUser')
+}
+
+// The half both voice paths share: parse the sentence, then either answer the
+// question it asked or validate and insert the events it described. Returns
+// { status, ok, saved, speech }; every outcome carries a short speakable
+// sentence, because the Shortcut reads `speech` and nothing else, and the app
+// puts it straight in a toast.
+async function logUtterance(text, who, lang, { allowQueries = false, dry = false } = {}) {
+  const l = langOf(lang)
+  const fail = (status, key) => ({ status, ok: false, saved: [], speech: say(key, l) })
+
   if (typeof text !== 'string' || !text.trim()) return fail(400, 'empty')
   if (text.length > 500) return fail(400, 'tooLong')
 
@@ -440,11 +497,19 @@ app.post('/api/voice', voiceRateLimit, async (req, res) => {
     parsed = await parseUtterance(text.trim())
   } catch (err) {
     console.error('voice parse failed:', err.message)
-    return res.json({ ok: false, saved: [], speech: say('unavailable', l) })
+    return { status: 200, ok: false, saved: [], speech: say('unavailable', l) }
+  }
+
+  // Questions read data. The Shortcut's token can only create events, and that
+  // create-only scope is exactly why a leaked Shortcut is survivable, so a
+  // question arriving on it is refused rather than widened into a read.
+  if (parsed.query) {
+    if (!allowQueries) return fail(200, 'queriesInAppOnly')
+    return { status: 200, ok: true, saved: [], speech: answer(answerQuery(parsed.query), l) }
   }
 
   if (parsed.clarification) {
-    return res.json({ ok: false, saved: [], speech: parsed.clarification })
+    return { status: 200, ok: false, saved: [], speech: parsed.clarification }
   }
   if (!parsed.events.length) return fail(200, 'notUnderstood')
 
@@ -481,13 +546,105 @@ app.post('/api/voice', voiceRateLimit, async (req, res) => {
 
   const speech = confirmation(planned, l) + warnings.join('')
   if (dry) {
-    return res.json({ ok: true, dry: true, saved: planned.map((p) => ({ ...p.event, occurred_at: p.at.toISOString() })), speech })
+    return {
+      status: 200,
+      ok: true,
+      dry: true,
+      saved: planned.map((p) => ({ ...p.event, occurred_at: p.at.toISOString() })),
+      speech,
+    }
   }
 
   const saved = planned.map(({ event, at }) =>
     insertEvent(event.type, { ...event, occurred_at: at.toISOString() }, who)
   )
-  res.json({ ok: true, saved, speech })
+  return { status: 200, ok: true, saved, speech }
+}
+
+const send = (res, { status, ...body }) => res.status(status).json(body)
+
+app.post('/api/voice', voiceRateLimit, async (req, res) => {
+  const { text, user, lang, dry } = req.body || {}
+  // An explicit `lang` from the Shortcut wins; falling back to the sentence's
+  // own script just stops an omitted field from answering Mandarin in English.
+  const spoken = lang || scriptLang(text)
+  const l = langOf(spoken)
+  const fail = (status, key) => res.status(status).json({ ok: false, saved: [], speech: say(key, l) })
+
+  // No token configured means the feature is off — never fall back to
+  // accepting APP_SECRET here, or the scoping is theater.
+  if (!VOICE_TOKEN) return fail(200, 'notSetUp')
+  const cookieUser = currentUser(req)
+  if (!cookieUser) {
+    const auth = req.headers.authorization
+    if (!(auth?.startsWith('Bearer ') && voiceTokenOk(auth.slice(7)))) return fail(401, 'unauthorized')
+  }
+  // Every Shortcut names its own parent in the request body. The in-app mic
+  // takes the parent from the login cookie instead, so this is the Shortcut's
+  // only way to say who is speaking.
+  const who = USER_NAMES.includes(user) ? user : null
+  if (!who) return fail(400, 'unknownUser')
+
+  send(res, await logUtterance(text, who, spoken, { allowQueries: !!cookieUser, dry }))
+})
+
+// --- voice: the in-app microphone ---
+//
+// Siri transcribes in the device's Siri language and ignores the Shortcut's
+// own language setting, so Mandarin cannot work through "Hey Siri" on an
+// English-Siri phone. This path records in the app instead and transcribes
+// server-side, where the model auto-detects the language and tolerates
+// code-switching mid-sentence.
+//
+// requireAuth ONLY: the login cookie says which parent is speaking, so there
+// is no token and no device map here. Questions are answered on this path for
+// the same reason - it is a real logged-in session, not a shared Shortcut.
+//
+// The audio is transient. It lives in memory for one request, goes to the
+// transcription vendor, and is dropped. It is never written to disk (do not
+// reuse PHOTOS_DIR or any other path) and never logged.
+const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+
+app.post('/api/voice/audio', requireAuth, voiceRateLimit, (req, res) => {
+  // Multer is invoked by hand so its own errors (an oversized clip) come back
+  // as speakable JSON. Left as middleware they hit Express's default handler,
+  // which answers with an HTML page the client has no way to read.
+  audioUpload.single('audio')(req, res, async (err) => {
+    // Unlike the Shortcut route, every outcome that carries a speakable
+    // sentence answers 200 here, soft failures included. The client uploads
+    // through apiUpload, which rejects any non-2xx with a generic "Request
+    // failed" - that would throw away the very sentence the parent needs to
+    // read. Auth (401) and the rate limit (429) still fail properly, and both
+    // are handled by middleware before this runs.
+    //
+    // Nothing has been transcribed yet at this point, so there is no language
+    // to detect and these few strings fall back to English.
+    const fail = (key) => res.status(200).json({ ok: false, saved: [], speech: say(key, 'en') })
+
+    if (err) {
+      console.error('voice audio upload failed:', err.message)
+      return fail('tooLong')
+    }
+    if (!transcribeConfigured()) return fail('notSetUp')
+    if (!req.file?.buffer?.length) return fail('empty')
+
+    let text
+    try {
+      text = await transcribeAudio(req.file.buffer, req.file.mimetype)
+    } catch (e) {
+      console.error('transcription failed:', e.message)
+      return fail('unavailable')
+    }
+
+    // Reply in whatever language was actually spoken, read off the transcript's
+    // own script. Nothing declares a language up front: having to pick one per
+    // device is the Siri limitation this whole path exists to escape.
+    const lang = scriptLang(text)
+    const out = await logUtterance(text, req.user, lang, { allowQueries: true })
+    // The transcript goes back so the parent can see what was heard when the
+    // parse fails. It is returned to the logged-in speaker and never logged.
+    send(res, { ...out, status: 200, transcript: text })
+  })
 })
 
 // --- photos ---
