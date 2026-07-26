@@ -171,9 +171,6 @@ In the Shortcuts app, create a new shortcut with four actions:
      - `text` (Text) = the *Dictated Text* variable
      - `user` (Text) = `YourName` - must match one of `USER_NAMES` exactly
      - `lang` (Text) = `en` or `zh`
-
-   Instead of `user`, you can send `device` and let the server work out who
-   that is - see below. It's worth it as soon as there's a second phone.
 3. **Get Dictionary Value** - Key `speech`, from *Contents of URL*.
 4. **Speak Text** - the *Dictionary Value*. Set **Language/voice** to match
    `lang`.
@@ -183,33 +180,18 @@ rename it to whatever feels natural. Avoid single common words like "Log" that
 collide with built-ins, and say the phrase out loud to confirm it actually
 triggers before settling on it.
 
-### One Shortcut for every phone
+### One Shortcut per phone
 
-Hardcoding `user` means each phone needs its own edited copy, and a copy that
-kept the original's name logs silently under the wrong parent - a mistake
-nobody notices until they read the timeline weeks later. Instead, let the
-Shortcut say which phone it's running on:
+Each phone needs its own copy with `user` set to that phone's owner. Be careful
+when duplicating: a copy that keeps the original's `user` logs silently under
+the wrong parent, and nobody notices until they read the timeline weeks later.
+After AirDropping a copy, open it and check the `user` field before using it.
 
-1. Add **Get Device Details** → *Device Name* before the request.
-2. In the JSON body, replace `user` with `device` (Text) = that variable.
-3. Tell the server whose phone is whose:
-
-```sh
-fly secrets set -a your-app-name --stage DEVICE_USERS="Phone One:Alex,Phone Two:Sam"
-fly deploy --ha=false
-```
-
-Read each phone's exact name from **Settings → General → About → Name**. Case,
-spacing and curly-vs-straight apostrophes are all normalized, so `Alex’s
-iPhone` and `alex's iphone` both match.
-
-Now every copy is byte-identical: AirDrop it and it identifies its owner by
-the phone it's running on. If a phone isn't in the map it says *"I don't know
-whose phone this is"* rather than guessing. Rename a phone and you'll hear
-that - update the secret to match.
-
-`user` still wins when both are sent, so Shortcuts built before this keep
-working untouched.
+(An earlier version let the Shortcut send its device name instead and had the
+server map phones to parents. That was removed - it existed to make every copy
+byte-identical, which stopped being worth the moving parts once the in-app mic
+button became the main way to log and the Shortcut became the hands-free
+fallback. `user` is now required.)
 
 ### One Shortcut per language, per phone
 
