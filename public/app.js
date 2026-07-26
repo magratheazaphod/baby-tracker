@@ -1293,7 +1293,7 @@ async function loadReports() {
       <div class="chart-sub">ml per feed — inferred, not measured</div>
       ${legend(['supply', 'appetite'])}
       ${estimateChart(days, estSeries)}
-      <div class="chart-note">PROTOTYPE · Supply: pumps starting 90+ min after the last feed or pump. Appetite: bottle feeds with no breastfeeding within 90 min. Several samples in a day reconcile to their median; the line is a 7-day average.</div>
+      <div class="chart-note">PROTOTYPE · Supply: pumps starting 60+ min after the last feed or pump. Appetite: bottle feeds with no breastfeeding within 60 min. Several samples in a day reconcile to their median; the line is a 7-day average.</div>
     </div>`
   }
   feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],

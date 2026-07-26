@@ -740,7 +740,7 @@ const localDay = (iso) => dayFmt.format(new Date(iso))
 // Neither can be measured directly; both are inferred from the shape of the
 // feeding log, so every surface that shows them says PROTOTYPE.
 //
-// Supply: a pump that follows 90+ minutes with no breast emptying (feed or
+// Supply: a pump that follows 60+ minutes with no breast emptying (feed or
 // earlier pump) starts from a roughly full breast, so what it yields estimates
 // one feed's worth of milk.
 //
@@ -748,10 +748,15 @@ const localDay = (iso) => dayFmt.format(new Date(iso))
 // overnight feeds where mom sleeps — is the one time we know exactly how much
 // she drank, because nothing else went in.
 //
+// The window is 60 minutes, not the 90 it started at. A newborn often feeds
+// again inside an hour, so 90 rejected nearly every session — including pumps
+// a parent reads as an obvious full-supply reading. 60 is where the samples
+// stay believable and enough of them survive to plot.
+//
 // Diurnal variation is deliberately ignored: every qualifying sample in a day
 // counts the same, and the day reconciles to the median so one cut-short pump
 // or one unusually hungry night can't swing it.
-const GAP_MIN = 90
+const GAP_MIN = 60
 const GAP_MS = GAP_MIN * 60 * 1000
 
 const median = (xs) => {
