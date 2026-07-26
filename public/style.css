@@ -585,6 +585,20 @@ nav {
 .legend { display: flex; gap: 14px; margin: 6px 0 4px; flex-wrap: wrap; }
 .legend span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+/* Marks an inferred, not-measured number wherever it is shown. */
+.proto-tag {
+  display: inline-block;
+  vertical-align: 1px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--muted);
+}
+.chart-card .chart-note { font-size: 11px; line-height: 1.45; color: var(--muted); margin: 6px 0 4px; }
 .chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
 .chart-svg text { font-family: inherit; }
 

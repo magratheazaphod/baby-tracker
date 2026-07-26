@@ -849,6 +849,10 @@ const SERIES = {
   pump: { label: 'Pumped', color: 'var(--c-breastfeed)' },
   pee: { label: 'Pee', color: 'var(--c-pee)' },
   poop: { label: 'Poop', color: 'var(--c-poop)' },
+  // Estimates keep their source's colour: supply comes from pumped breast
+  // milk, appetite from what she drains out of a bottle.
+  supply: { label: 'Est. supply', color: 'var(--c-breastfeed)' },
+  appetite: { label: 'Est. appetite', color: 'var(--c-formula)' },
 }
 
 function chartTip(svg, getText) {
@@ -930,6 +934,73 @@ function barChart(days, seriesKeys, valueOf, fmtVal) {
     ${grid}
     <line x1="${M.left}" y1="${M.top + plotH}" x2="${W - M.right}" y2="${M.top + plotH}" stroke="var(--hairline)" stroke-width="1"/>
     ${bars}${xLabels}
+  </svg>`
+}
+
+// PROTOTYPE chart: sparse per-day estimates (only the days that produced a
+// qualifying sample) as dots, with a 7-day trailing mean drawn through them so
+// the direction reads despite the noise. Bars would imply the empty days
+// measured zero; they measured nothing.
+function estimateChart(days, seriesList) {
+  const W = 520
+  const H = 190
+  const M = { top: 12, right: 6, bottom: 22, left: 34 }
+  const plotW = W - M.left - M.right
+  const plotH = H - M.top - M.bottom
+  const all = seriesList.flatMap((s) => days.map((d) => s.valueOf(d)).filter((v) => v != null))
+  const yMax = niceCeil(Math.max(1, ...all))
+  const slot = plotW / days.length
+  const px = (i) => M.left + i * slot + slot / 2
+  const py = (v) => M.top + plotH - (v / yMax) * plotH
+
+  let marks = ''
+  for (const s of seriesList) {
+    const color = SERIES[s.key].color
+    const points = days.map((d, i) => ({ i, d, v: s.valueOf(d) })).filter((p) => p.v != null)
+    if (!points.length) continue
+
+    // Trailing 7-day mean, plotted only where the window holds 2+ samples so a
+    // lone estimate never masquerades as a trend.
+    const trend = []
+    days.forEach((d, i) => {
+      const win = points.filter((p) => p.i <= i && p.i > i - 7)
+      if (win.length < 2) return
+      trend.push({ i, v: win.reduce((sum, p) => sum + p.v, 0) / win.length })
+    })
+    if (trend.length > 1) {
+      const path = trend.map((t, k) => `${k ? 'L' : 'M'}${px(t.i).toFixed(1)},${py(t.v).toFixed(1)}`).join(' ')
+      marks += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.55"/>`
+    }
+    marks += points
+      .map((p) => {
+        const n = s.samplesOf(p.d)
+        const tip = `${fmtDayHeader(p.d.date)} · ${SERIES[s.key].label}: ${p.v} ml (${n} sample${n === 1 ? '' : 's'})`
+        return `<circle cx="${px(p.i).toFixed(1)}" cy="${py(p.v).toFixed(1)}" r="3.5" fill="${color}" stroke="var(--surface)" stroke-width="1.5" data-tip="${escapeHtml(tip)}"/>`
+      })
+      .join('')
+  }
+
+  const grid = yTicks(yMax)
+    .map((t) => {
+      const y = py(t)
+      return `<line x1="${M.left}" y1="${y}" x2="${W - M.right}" y2="${y}" stroke="var(--grid)" stroke-width="1"/>
+        <text x="${M.left - 6}" y="${y + 3.5}" text-anchor="end" font-size="10" fill="var(--muted)">${t}</text>`
+    })
+    .join('')
+
+  const labelEvery = Math.ceil(days.length / 7)
+  const xLabels = days
+    .map((d, i) => {
+      if (i % labelEvery !== 0 && i !== days.length - 1) return ''
+      const dt = new Date(`${d.date}T12:00:00`)
+      return `<text x="${px(i)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${dt.getMonth() + 1}/${dt.getDate()}</text>`
+    })
+    .join('')
+
+  return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+    ${grid}
+    <line x1="${M.left}" y1="${M.top + plotH}" x2="${W - M.right}" y2="${M.top + plotH}" stroke="var(--hairline)" stroke-width="1"/>
+    ${marks}${xLabels}
   </svg>`
 }
 
@@ -1156,7 +1227,7 @@ function fillDays(days) {
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     out.push(
-      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
+      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0, supplyMl: null, supplySamples: 0, appetiteMl: null, appetiteSamples: 0 }
     )
     if (key >= today) break
     cursor.setDate(cursor.getDate() + 1)
@@ -1179,10 +1250,22 @@ async function loadReports() {
   const unit = localStorage.getItem('weightUnit') || 'lb'
   const fmtW = (g) => (unit === 'kg' ? `${(g / 1000).toFixed(2)} kg` : `${(g / 453.592).toFixed(2)} lb`)
 
+  // Estimates are sparse - a day only produces one when a qualifying pump or
+  // isolated bottle happened - so the tile shows the most recent one and dates it.
+  const lastEst = (key) => [...days].reverse().find((d) => d[key] != null)
+  const estTile = (key, label, emoji) => {
+    const d = lastEst(key)
+    if (!d) return ''
+    const when = d.date === todayKey ? 'today' : fmtDayHeader(d.date)
+    return `<div class="tile"><div class="tile-label">${emoji} ${label} <span class="proto-tag">PROTOTYPE</span></div><div class="tile-value">${d[key]} ml</div><div class="tile-sub">per feed · ${when}</div></div>`
+  }
+
   const tilesHtml = `<div class="tiles">
     <div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>
     <div class="tile"><div class="tile-label">🍼 Bottle today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}${today.breastmilkMl ? ` · ${today.breastmilkMl} ml breast milk` : ''}</div></div>
     ${days.some((d) => d.pumpedMl > 0) ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${today.pumpCount} session${today.pumpCount === 1 ? '' : 's'}</div></div>` : ''}
+    ${estTile('supplyMl', 'Est. supply', '🧪')}
+    ${estTile('appetiteMl', 'Est. appetite', '🧪')}
     <div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>
     <div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>
   </div>`
@@ -1196,6 +1279,22 @@ async function loadReports() {
   if (days.some((d) => d.pumpedMl > 0)) {
     feedingHtml += chartCard('Pumped per day', 'ml expressed by pumping', ['pump'],
       barChart(days, ['pump'], (d) => d.pumpedMl || 0, (v) => `${v} ml`))
+  }
+
+  // Inferred, never measured - so the card, the subtitle and the tiles all say
+  // PROTOTYPE, and a footnote spells out where the numbers come from.
+  const estSeries = [
+    { key: 'supply', valueOf: (d) => d.supplyMl, samplesOf: (d) => d.supplySamples },
+    { key: 'appetite', valueOf: (d) => d.appetiteMl, samplesOf: (d) => d.appetiteSamples },
+  ]
+  if (days.some((d) => d.supplyMl != null || d.appetiteMl != null)) {
+    feedingHtml += `<div class="chart-card">
+      <h3>Estimated supply &amp; appetite <span class="proto-tag">PROTOTYPE</span></h3>
+      <div class="chart-sub">ml per feed — inferred, not measured</div>
+      ${legend(['supply', 'appetite'])}
+      ${estimateChart(days, estSeries)}
+      <div class="chart-note">PROTOTYPE · Supply: pumps starting 90+ min after the last feed or pump. Appetite: bottle feeds with no breastfeeding within 90 min. Several samples in a day reconcile to their median; the line is a 7-day average.</div>
+    </div>`
   }
   feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],
     barChart(days, ['breastfeed', 'bottle'], (d, k) => (k === 'breastfeed' ? d.breastfeedCount : d.formulaCount), (v) => `${v}`))
