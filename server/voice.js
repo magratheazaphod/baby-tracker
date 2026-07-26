@@ -15,7 +15,7 @@ const HOME_TZ = process.env.HOME_TZ || 'America/Los_Angeles'
 // thinking off and low effort to keep the round trip short (analyze.js pattern).
 const MODEL = 'claude-sonnet-5'
 
-export const VOICE_TYPES = ['breastfeed', 'formula', 'diaper', 'weight', 'height', 'head', 'milestone']
+export const VOICE_TYPES = ['breastfeed', 'formula', 'pump', 'diaper', 'weight', 'height', 'head', 'milestone']
 
 // Voice adds unit-mishap risk a tap-based form doesn't have: a mis-parse could
 // write weight_g: 7 from "seven pounds". These bounds run after validateEvent.
@@ -47,8 +47,8 @@ const LOG_EVENTS_TOOL = {
               enum: ['pee', 'poop', 'both', 'formula', 'breastmilk'],
               description: "diaper: pee/poop/both. formula (any bottle): formula/breastmilk.",
             },
-            duration_min: { type: 'number', description: 'breastfeed only, minutes' },
-            amount_ml: { type: 'number', description: 'formula (bottle) only, millilitres' },
+            duration_min: { type: 'number', description: 'breastfeed and pump only, minutes' },
+            amount_ml: { type: 'number', description: 'formula (bottle) and pump only, millilitres' },
             weight_g: { type: 'number', description: 'weight only, grams' },
             height_cm: { type: 'number', description: 'height only, centimetres' },
             head_cm: { type: 'number', description: 'head only, centimetres' },
@@ -97,6 +97,7 @@ Common Mandarin vocabulary:
 - 喂奶 / 亲喂 / 母乳 -> type breastfeed
 - 瓶喂 / 奶瓶 -> type formula (配方奶 -> kind formula; 母乳瓶喂 / 挤出来的奶 -> kind breastmilk)
 - 尿 / 尿了 -> diaper kind pee; 便便 / 大便 / 拉了 -> poop; 都有 / 又尿又拉 -> both
+- 吸奶 / 泵奶 / 挤奶 -> type pump (amount_ml is what was expressed)
 - 体重 -> weight; 身高 / 身长 -> height; 头围 -> head; 里程碑 / 第一次… -> milestone
 
 TIME: work out minutes_ago from the current local time above. "just now" / 刚才 / 刚刚 -> 0,
@@ -120,6 +121,9 @@ When no unit is spoken, the number alone decides it:
 OTHER RULES:
 - type formula means ANY bottle; kind says what was in it. "Bottle" with no
   contents mentioned -> kind formula. Pumped milk -> kind breastmilk.
+- type pump is a pumping session by the parent: amount_ml is required, duration
+  optional. "I pumped 120 ml" -> pump; "she drank 120 ml of pumped milk" ->
+  formula with kind breastmilk. Only pumping the parent did is type pump.
 - Breastfeeding has NO side (left/right) field. If a side is mentioned, put it in
   notes; never invent a field.
 - "Wet" -> pee, "dirty" / "poopy" -> poop, "wet and dirty" -> both.
@@ -237,6 +241,7 @@ const END = { en: '.', zh: '。' }
 const TYPE_NOUN = {
   breastfeed: { en: 'breastfeed', zh: '亲喂' },
   formula: { en: 'bottle', zh: '瓶喂' },
+  pump: { en: 'pumping session', zh: '吸奶' },
   diaper: { en: 'diaper', zh: '尿布' },
   weight: { en: 'weight', zh: '体重' },
   height: { en: 'height', zh: '身高' },
@@ -291,6 +296,10 @@ function describeEvent(event, lang) {
       const milk = event.kind === 'breastmilk'
       if (l === 'zh') return `瓶喂${milk ? '母乳' : ''} ${event.amount_ml} 毫升`
       return `bottle${milk ? ' of breastmilk' : ''}, ${event.amount_ml} ml`
+    }
+    case 'pump': {
+      const dur = event.duration_min ? (l === 'zh' ? ` ${event.duration_min} 分钟` : `, ${event.duration_min} min`) : ''
+      return l === 'zh' ? `吸奶 ${event.amount_ml} 毫升${dur}` : `pumped ${event.amount_ml} ml${dur}`
     }
     case 'diaper':
       return DIAPER_DESC[event.kind][l]
