@@ -186,8 +186,9 @@ function validateEvent(type, body) {
       if (!(typeof body.amount_ml === 'number' && body.amount_ml > 0)) return 'Bottle needs an amount in ml'
       return body.kind == null || BOTTLE_KINDS.includes(body.kind) ? null : 'Bottle kind must be formula or breastmilk'
     case 'pump':
-      if (!(typeof body.amount_ml === 'number' && body.amount_ml > 0)) return 'Pumping needs an amount in ml'
-      return num(body.duration_min) ? null : 'Bad duration'
+      // Volume only: how long a session took isn't something anyone goes back
+      // and reads, and asking for it slows down the log.
+      return typeof body.amount_ml === 'number' && body.amount_ml > 0 ? null : 'Pumping needs an amount in ml'
     case 'diaper':
       return DIAPER_KINDS.includes(body.kind) ? null : 'Diaper needs a kind: pee, poop, or both'
     case 'weight':
@@ -206,7 +207,7 @@ function validateEvent(type, body) {
 const FIELDS_BY_TYPE = {
   breastfeed: ['duration_min', 'awake_after'],
   formula: ['amount_ml', 'awake_after', 'kind'],
-  pump: ['amount_ml', 'duration_min'],
+  pump: ['amount_ml'],
   diaper: ['kind'],
   weight: ['weight_g'],
   height: ['height_cm'],

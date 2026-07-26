@@ -101,7 +101,7 @@ function describe(e) {
     case 'formula':
       return { emoji: '🍼', title: `Bottle · ${e.kind === 'breastmilk' ? 'Breast milk' : 'Formula'}`, sub: `${e.amount_ml} ml` }
     case 'pump':
-      return { emoji: '🫙', title: 'Pumping', sub: `${e.amount_ml} ml${e.duration_min ? ` · ${e.duration_min} min` : ''}` }
+      return { emoji: '🫙', title: 'Pumping', sub: `${e.amount_ml} ml` }
     case 'diaper': {
       const label = { pee: 'Pee', poop: 'Poop', both: 'Pee + poop' }[e.kind] || e.kind
       const emoji = { pee: '💧', poop: '💩', both: '💧💩' }[e.kind] || '💧'
@@ -281,7 +281,6 @@ function openSheet(type, { kind, existing } = {}) {
           <button type="button" data-step="1">+</button>
         </div>
       </label>
-      <label>Duration in minutes (optional)<input type="number" name="duration_min" inputmode="numeric" min="1" step="1" value="${existing?.duration_min ?? ''}"></label>
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'diaper') {
     const selected = existing?.kind || kind || 'pee'
@@ -544,7 +543,6 @@ function openSheet(type, { kind, existing } = {}) {
         }
         if (type === 'pump') {
           body.amount_ml = Number(fd.get('amount_ml'))
-          body.duration_min = fd.get('duration_min') ? Number(fd.get('duration_min')) : null
           localStorage.setItem('lastPumpMl', body.amount_ml)
         }
         if (type === 'diaper') body.kind = fd.get('kind')
