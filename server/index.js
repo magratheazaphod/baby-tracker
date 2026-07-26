@@ -735,6 +735,88 @@ const dayFmt = new Intl.DateTimeFormat('en-CA', {
 })
 const localDay = (iso) => dayFmt.format(new Date(iso))
 
+// --- estimated supply & appetite (PROTOTYPE) ---
+//
+// Neither can be measured directly; both are inferred from the shape of the
+// feeding log, so every surface that shows them says PROTOTYPE.
+//
+// Supply: a pump that follows 90+ minutes with no breast emptying (feed or
+// earlier pump) starts from a roughly full breast, so what it yields estimates
+// one feed's worth of milk.
+//
+// Appetite: a bottle feed with no breastfeeding anywhere near it — the
+// overnight feeds where mom sleeps — is the one time we know exactly how much
+// she drank, because nothing else went in.
+//
+// Diurnal variation is deliberately ignored: every qualifying sample in a day
+// counts the same, and the day reconciles to the median so one cut-short pump
+// or one unusually hungry night can't swing it.
+const GAP_MIN = 90
+const GAP_MS = GAP_MIN * 60 * 1000
+
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+// Returns { supply: Map(day -> ml[]), appetite: Map(day -> ml[]) }.
+function feedEstimates(sinceIso) {
+  // Look back past the window so the first day's events are judged against the
+  // feeds that actually preceded them, not against an empty history.
+  const lookback = new Date(Date.parse(sinceIso) - 24 * 3600 * 1000).toISOString()
+  const rows = db
+    .prepare(
+      `SELECT type, kind, occurred_at, duration_min, amount_ml FROM events
+       WHERE type IN ('breastfeed','formula','pump') AND occurred_at >= ? ORDER BY occurred_at ASC`
+    )
+    .all(lookback)
+
+  const startTs = (e) => Date.parse(e.occurred_at)
+  // The breast is empty when a feed ends, not when it starts. Pumping is
+  // logged by volume only, so a pump's start is all we have.
+  const endTs = (e) => startTs(e) + (e.type === 'breastfeed' ? (e.duration_min || 0) * 60000 : 0)
+
+  const supply = new Map()
+  const appetite = new Map()
+  const push = (map, day, ml) => map.set(day, [...(map.get(day) || []), ml])
+
+  const emptyings = rows.filter((e) => e.type === 'breastfeed' || e.type === 'pump')
+  emptyings.forEach((e, i) => {
+    if (e.type !== 'pump' || !e.amount_ml) return
+    const prev = emptyings[i - 1]
+    // No prior emptying inside the lookback means the gap is a day or more.
+    if (prev && startTs(e) - endTs(prev) < GAP_MS) return
+    push(supply, localDay(e.occurred_at), e.amount_ml)
+  })
+
+  // Bottles less than the gap apart are one feeding episode (a top-up when she
+  // was still hungry), so they sum into a single appetite sample.
+  const clusters = []
+  for (const b of rows) {
+    if (b.type !== 'formula' || !b.amount_ml) continue
+    const last = clusters[clusters.length - 1]
+    if (last && startTs(b) - last.end < GAP_MS) {
+      last.ml += b.amount_ml
+      last.end = startTs(b)
+    } else {
+      clusters.push({ start: startTs(b), end: startTs(b), ml: b.amount_ml, day: localDay(b.occurred_at) })
+    }
+  }
+  const feeds = rows.filter((e) => e.type === 'breastfeed')
+  const now = Date.now()
+  for (const c of clusters) {
+    // A cluster that ended less than a gap ago can still be followed by a
+    // breastfeed; judging it now would be premature.
+    if (c.end + GAP_MS > now) continue
+    const nearFeed = feeds.some((f) => endTs(f) > c.start - GAP_MS && startTs(f) < c.end + GAP_MS)
+    if (nearFeed) continue
+    push(appetite, c.day, c.ml)
+  }
+
+  return { supply, appetite }
+}
+
 app.get('/api/reports/daily', requireAuth, (req, res) => {
   const days = Math.min(Number(req.query.days) || 30, 365)
   const since = new Date(Date.now() - days * 86400 * 1000).toISOString()
@@ -760,6 +842,10 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
         pumpedMl: 0,
         pee: 0,
         poop: 0,
+        supplyMl: null,
+        supplySamples: 0,
+        appetiteMl: null,
+        appetiteSamples: 0,
       })
     }
     const d = byDay.get(day)
@@ -786,6 +872,20 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       heads.push({ occurred_at: e.occurred_at, date: day, head_cm: e.head_cm })
     }
   }
+  const { supply, appetite } = feedEstimates(since)
+  for (const [day, d] of byDay) {
+    const s = supply.get(day)
+    const a = appetite.get(day)
+    if (s) {
+      d.supplyMl = Math.round(median(s))
+      d.supplySamples = s.length
+    }
+    if (a) {
+      d.appetiteMl = Math.round(median(a))
+      d.appetiteSamples = a.length
+    }
+  }
+
   res.json({ days: [...byDay.values()], weights, heights, heads })
 })
 
