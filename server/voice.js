@@ -47,7 +47,7 @@ const LOG_EVENTS_TOOL = {
               enum: ['pee', 'poop', 'both', 'formula', 'breastmilk'],
               description: "diaper: pee/poop/both. formula (any bottle): formula/breastmilk.",
             },
-            duration_min: { type: 'number', description: 'breastfeed and pump only, minutes' },
+            duration_min: { type: 'number', description: 'breastfeed only, minutes' },
             amount_ml: { type: 'number', description: 'formula (bottle) and pump only, millilitres' },
             weight_g: { type: 'number', description: 'weight only, grams' },
             height_cm: { type: 'number', description: 'height only, centimetres' },
@@ -168,9 +168,10 @@ When no unit is spoken, the number alone decides it:
 OTHER RULES:
 - type formula means ANY bottle; kind says what was in it. "Bottle" with no
   contents mentioned -> kind formula. Pumped milk -> kind breastmilk.
-- type pump is a pumping session by the parent: amount_ml is required, duration
-  optional. "I pumped 120 ml" -> pump; "she drank 120 ml of pumped milk" ->
-  formula with kind breastmilk. Only pumping the parent did is type pump.
+- type pump is a pumping session by the parent: amount_ml only, never a duration
+  even if one is mentioned. "I pumped 120 ml" -> pump; "she drank 120 ml of
+  pumped milk" -> formula with kind breastmilk. Only pumping the parent did is
+  type pump.
 - Breastfeeding has NO side (left/right) field. If a side is mentioned, put it in
   notes; never invent a field.
 - "Wet" -> pee, "dirty" / "poopy" -> poop, "wet and dirty" -> both.
@@ -388,10 +389,8 @@ function describeEvent(event, lang) {
       if (l === 'zh') return `瓶喂${milk ? '母乳' : ''} ${event.amount_ml} 毫升`
       return `bottle${milk ? ' of breastmilk' : ''}, ${event.amount_ml} ml`
     }
-    case 'pump': {
-      const dur = event.duration_min ? (l === 'zh' ? ` ${event.duration_min} 分钟` : `, ${event.duration_min} min`) : ''
-      return l === 'zh' ? `吸奶 ${event.amount_ml} 毫升${dur}` : `pumped ${event.amount_ml} ml${dur}`
-    }
+    case 'pump':
+      return l === 'zh' ? `吸奶 ${event.amount_ml} 毫升` : `pumped ${event.amount_ml} ml`
     case 'diaper':
       return DIAPER_DESC[event.kind][l]
     case 'weight':
