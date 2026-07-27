@@ -20,6 +20,9 @@
   --c-poop: #008300;
   --c-weight: #4a3aa7;
   --c-feed: #d55181; /* feed markers drawn on top of sleep bands */
+  /* benchmark band behind estimate charts: a background wash, never a series */
+  --c-band: #efedf8;
+  --c-band-line: #8b7cb8;
   --grid: #e6e2ef;
 }
 
@@ -46,6 +49,8 @@
     --c-poop: #008300;
     --c-weight: #9085e9;
     --c-feed: #e87ba4;
+    --c-band: #2c2740;
+    --c-band-line: #7d76a6;
     --grid: #322d42;
   }
 }
@@ -68,6 +73,8 @@
   --c-poop: #008300;
   --c-weight: #9085e9;
   --c-feed: #e87ba4;
+  --c-band: #2c2740;
+  --c-band-line: #7d76a6;
   --grid: #322d42;
 }
 :root[data-theme="light"] {
@@ -557,6 +564,27 @@ nav {
   color: #fff;
 }
 
+.range-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.range-toggle button {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.range-toggle button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .tiles {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -598,7 +626,38 @@ nav {
   background: var(--bg);
   color: var(--muted);
 }
-.chart-card .chart-note { font-size: 11px; line-height: 1.45; color: var(--muted); margin: 6px 0 4px; }
+/* Methodology, revealed by the "?" — a panel, not a footnote, so the chart
+   keeps its space and the explanation gets room to be readable. */
+.chart-card .chart-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0 10px;
+}
+.chart-card .chart-note p { margin: 0 0 8px; }
+.chart-card .chart-note p:last-child { margin-bottom: 0; }
+.chart-help {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.chart-help.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
 .chart-svg text { font-family: inherit; }
 

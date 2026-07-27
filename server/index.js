@@ -746,7 +746,11 @@ const localDay = (iso) => dayFmt.format(new Date(iso))
 //
 // Appetite: a bottle feed with no breastfeeding anywhere near it — the
 // overnight feeds where mom sleeps — is the one time we know exactly how much
-// she drank, because nothing else went in.
+// she drank, because nothing else went in. What she drinks in one sitting is
+// mostly a function of how long she went without, so the sample that carries
+// meaning is the rate: volume divided by the hours since the previous feed
+// *started* (feeds are the meals; the clock between their starts is the
+// interval being fed). Volume alone rises and falls with the feeding schedule.
 //
 // The window is 60 minutes, not the 90 it started at. A newborn often feeds
 // again inside an hour, so 90 rejected nearly every session — including pumps
@@ -758,6 +762,13 @@ const localDay = (iso) => dayFmt.format(new Date(iso))
 // or one unusually hungry night can't swing it.
 const GAP_MIN = 60
 const GAP_MS = GAP_MIN * 60 * 1000
+
+// Intervals outside this range make the rate meaningless rather than merely
+// noisy: under an hour and the previous feed is really the same meal, past
+// eight hours something was missed from the log (or she slept through, which
+// says nothing about appetite).
+const MIN_INTERVAL_H = 1
+const MAX_INTERVAL_H = 8
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b)
@@ -809,6 +820,9 @@ function feedEstimates(sinceIso) {
     }
   }
   const feeds = rows.filter((e) => e.type === 'breastfeed')
+  // Every feed start, bottle or breast — the meal boundaries the interval is
+  // measured between.
+  const feedStarts = rows.filter((e) => e.type === 'breastfeed' || e.type === 'formula').map(startTs)
   const now = Date.now()
   for (const c of clusters) {
     // A cluster that ended less than a gap ago can still be followed by a
@@ -816,7 +830,11 @@ function feedEstimates(sinceIso) {
     if (c.end + GAP_MS > now) continue
     const nearFeed = feeds.some((f) => endTs(f) > c.start - GAP_MS && startTs(f) < c.end + GAP_MS)
     if (nearFeed) continue
-    push(appetite, c.day, c.ml)
+    const prevStart = feedStarts.filter((t) => t < c.start).pop()
+    if (prevStart == null) continue
+    const hours = (c.start - prevStart) / 3600000
+    if (hours < MIN_INTERVAL_H || hours > MAX_INTERVAL_H) continue
+    push(appetite, c.day, { ml: c.ml, hours, rate: c.ml / hours })
   }
 
   return { supply, appetite }
@@ -850,6 +868,8 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
         supplyMl: null,
         supplySamples: 0,
         appetiteMl: null,
+        appetiteMlHr: null,
+        appetiteHours: null,
         appetiteSamples: 0,
       })
     }
@@ -886,12 +906,20 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       d.supplySamples = s.length
     }
     if (a) {
-      d.appetiteMl = Math.round(median(a))
+      d.appetiteMl = Math.round(median(a.map((x) => x.ml)))
+      d.appetiteMlHr = Math.round(median(a.map((x) => x.rate)) * 10) / 10
+      d.appetiteHours = Math.round(median(a.map((x) => x.hours)) * 10) / 10
       d.appetiteSamples = a.length
     }
   }
 
-  res.json({ days: [...byDay.values()], weights, heights, heads })
+  // The band the appetite chart is benchmarked against needs a weight, and the
+  // latest measurement is usually older than the report window.
+  const latest = db
+    .prepare("SELECT weight_g, occurred_at FROM events WHERE type = 'weight' ORDER BY occurred_at DESC LIMIT 1")
+    .get()
+
+  res.json({ days: [...byDay.values()], weights, heights, heads, latestWeight: latest || null })
 })
 
 // --- backup export ---

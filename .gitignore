@@ -4,3 +4,5 @@ data/
 .DS_Store
 # Contains the real app name — copy fly.toml.example and keep yours local.
 fly.toml
+# Scratch worktrees created by tooling.
+.claude/worktrees/
