@@ -771,14 +771,15 @@ function fmtAgo(iso) {
   return `${d}d ago`
 }
 
-// Stamp each log button with when that thing was last logged (all diaper
-// buttons share the diaper time) — a glance-check against double-logging.
+// Stamp each log button with when that thing was last logged. Diaper buttons
+// key on type+kind so each (pee/poop/both) shows its own last time - a
+// glance-check against double-logging that particular kind.
 async function loadLastLogged() {
   try {
     const rows = await api('/api/events/latest')
-    const byType = Object.fromEntries(rows.map((r) => [r.type, r.occurred_at]))
+    const byKey = Object.fromEntries(rows.map((r) => [`${r.type}|${r.kind || ''}`, r.occurred_at]))
     document.querySelectorAll('.log-btn[data-log]').forEach((btn) => {
-      const last = byType[btn.dataset.log]
+      const last = byKey[`${btn.dataset.log}|${btn.dataset.kind || ''}`]
       let el = btn.querySelector('.log-last')
       if (!el) {
         el = document.createElement('span')
