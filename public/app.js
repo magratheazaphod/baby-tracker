@@ -941,17 +941,53 @@ function barChart(days, seriesKeys, valueOf, fmtVal) {
 // qualifying sample) as dots, with a 7-day trailing mean drawn through them so
 // the direction reads despite the noise. Bars would imply the empty days
 // measured zero; they measured nothing.
-function estimateChart(days, seriesList) {
+// opts.band (optional) shades an expected range behind the marks: { loOf, hiOf,
+// midOf } per day, any of which may return null on days with no benchmark.
+// opts.fmt formats values in tooltips.
+function estimateChart(days, seriesList, opts = {}) {
   const W = 520
   const H = 190
   const M = { top: 12, right: 6, bottom: 22, left: 34 }
   const plotW = W - M.left - M.right
   const plotH = H - M.top - M.bottom
+  const band = opts.band
+  const fmt = opts.fmt || ((v) => `${v} ml`)
   const all = seriesList.flatMap((s) => days.map((d) => s.valueOf(d)).filter((v) => v != null))
+  if (band) all.push(...days.map((d) => band.hiOf(d)).filter((v) => v != null))
   const yMax = niceCeil(Math.max(1, ...all))
   const slot = plotW / days.length
   const px = (i) => M.left + i * slot + slot / 2
-  const py = (v) => M.top + plotH - (v / yMax) * plotH
+  const py = (v) => M.top + plotH - (Math.min(v, yMax) / yMax) * plotH
+
+  // The band is drawn first so every sample sits on top of it.
+  let bandMark = ''
+  if (band) {
+    const pts = days.map((d, i) => ({ i, lo: band.loOf(d), hi: band.hiOf(d) })).filter((p) => p.lo != null && p.hi != null)
+    if (pts.length) {
+      // A single day still deserves a visible band, so a lone point is widened
+      // to the full plot rather than collapsing to a zero-width sliver.
+      const xs = pts.length > 1 ? pts.map((p) => px(p.i)) : [M.left, W - M.right]
+      // It is a background region, not a series: run it to the plot edges
+      // rather than stopping at the first and last dot centre.
+      if (pts.length > 1) {
+        xs[0] = M.left
+        xs[xs.length - 1] = W - M.right
+      }
+      const top = xs.map((x, k) => `${k ? 'L' : 'M'}${x.toFixed(1)},${py(pts[Math.min(k, pts.length - 1)].hi).toFixed(1)}`).join(' ')
+      const bottom = xs
+        .map((x, k) => ({ x, p: pts[Math.min(k, pts.length - 1)] }))
+        .reverse()
+        .map(({ x, p }) => `L${x.toFixed(1)},${py(p.lo).toFixed(1)}`)
+        .join(' ')
+      bandMark += `<path d="${top} ${bottom} Z" fill="var(--c-band)" opacity="0.9"/>`
+      if (band.midOf) {
+        const mid = xs
+          .map((x, k) => `${k ? 'L' : 'M'}${x.toFixed(1)},${py(band.midOf(days[pts[Math.min(k, pts.length - 1)].i])).toFixed(1)}`)
+          .join(' ')
+        bandMark += `<path d="${mid}" fill="none" stroke="var(--c-band-line)" stroke-width="1.5" stroke-dasharray="4 4"/>`
+      }
+    }
+  }
 
   let marks = ''
   for (const s of seriesList) {
@@ -974,7 +1010,8 @@ function estimateChart(days, seriesList) {
     marks += points
       .map((p) => {
         const n = s.samplesOf(p.d)
-        const tip = `${fmtDayHeader(p.d.date)} · ${SERIES[s.key].label}: ${p.v} ml (${n} sample${n === 1 ? '' : 's'})`
+        const extra = s.tipExtra ? s.tipExtra(p.d) : ''
+        const tip = `${fmtDayHeader(p.d.date)} · ${SERIES[s.key].label}: ${fmt(p.v)}${extra} (${n} sample${n === 1 ? '' : 's'})`
         return `<circle cx="${px(p.i).toFixed(1)}" cy="${py(p.v).toFixed(1)}" r="3.5" fill="${color}" stroke="var(--surface)" stroke-width="1.5" data-tip="${escapeHtml(tip)}"/>`
       })
       .join('')
@@ -998,7 +1035,7 @@ function estimateChart(days, seriesList) {
     .join('')
 
   return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">
-    ${grid}
+    ${bandMark}${grid}
     <line x1="${M.left}" y1="${M.top + plotH}" x2="${W - M.right}" y2="${M.top + plotH}" stroke="var(--hairline)" stroke-width="1"/>
     ${marks}${xLabels}
   </svg>`
@@ -1213,8 +1250,39 @@ function legend(keys) {
     .join('')}</div>`
 }
 
+// Methodology text for the inferred charts. It matters (these numbers are
+// guesses, and the reader deserves to know from what) but it is long and it is
+// read once, so it hides behind a "?" instead of eating a third of the card.
+function helpBtn(id) {
+  return `<button class="chart-help" data-help="${id}" aria-label="How this is calculated">?</button>`
+}
+function helpNote(id, html) {
+  return `<div class="chart-note hidden" data-help-for="${id}">${html}</div>`
+}
+
 function chartCard(title, sub, keys, svg) {
   return `<div class="chart-card"><h3>${title}</h3><div class="chart-sub">${sub}</div>${keys.length > 1 ? legend(keys) : ''}${svg}</div>`
+}
+
+// How much history the per-day charts show. A month of newborn data is a wall
+// of bars on a phone, so a week is the default and the longer views are opt-in.
+const RANGES = [
+  { id: '7', label: '1 week', days: 7 },
+  { id: '30', label: '1 month', days: 30 },
+  { id: '90', label: '3 months', days: 90 },
+]
+const REPORT_DAYS = 90 // fetched window; the range only slices what's plotted
+
+function activeRange() {
+  const id = localStorage.getItem('reportsRange')
+  return RANGES.find((r) => r.id === id) || RANGES[0]
+}
+
+function rangeToggle() {
+  const active = activeRange().id
+  return `<div class="range-toggle">${RANGES.map(
+    (r) => `<button data-range="${r.id}" class="${r.id === active ? 'active' : ''}">${r.label}</button>`
+  ).join('')}</div>`
 }
 
 // Fill gaps so charts show every calendar day between first entry and today.
@@ -1227,16 +1295,16 @@ function fillDays(days) {
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     out.push(
-      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0, supplyMl: null, supplySamples: 0, appetiteMl: null, appetiteSamples: 0 }
+      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0, supplyMl: null, supplySamples: 0, appetiteMl: null, appetiteMlHr: null, appetiteHours: null, appetiteSamples: 0 }
     )
     if (key >= today) break
     cursor.setDate(cursor.getDate() + 1)
   }
-  return out.slice(-30)
+  return out.slice(-activeRange().days)
 }
 
 async function loadReports() {
-  const { days: rawDays, weights, heights, heads = [] } = await api('/api/reports/daily?days=30')
+  const { days: rawDays, weights, heights, heads = [], latestWeight = null } = await api(`/api/reports/daily?days=${REPORT_DAYS}`)
   const el = $('#reports')
   if (!rawDays.length && !weights.length && !heights.length && !heads.length) {
     el.innerHTML = '<div class="day-header">No data yet — reports appear once you start logging.</div>'
@@ -1253,19 +1321,19 @@ async function loadReports() {
   // Estimates are sparse - a day only produces one when a qualifying pump or
   // isolated bottle happened - so the tile shows the most recent one and dates it.
   const lastEst = (key) => [...days].reverse().find((d) => d[key] != null)
-  const estTile = (key, label, emoji) => {
+  const estTile = (key, label, emoji, value, sub) => {
     const d = lastEst(key)
     if (!d) return ''
     const when = d.date === todayKey ? 'today' : fmtDayHeader(d.date)
-    return `<div class="tile"><div class="tile-label">${emoji} ${label} <span class="proto-tag">PROTOTYPE</span></div><div class="tile-value">${d[key]} ml</div><div class="tile-sub">per feed · ${when}</div></div>`
+    return `<div class="tile"><div class="tile-label">${emoji} ${label} <span class="proto-tag">PROTOTYPE</span></div><div class="tile-value">${value(d)}</div><div class="tile-sub">${sub(d)} · ${when}</div></div>`
   }
 
   const tilesHtml = `<div class="tiles">
     <div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>
     <div class="tile"><div class="tile-label">🍼 Bottle today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}${today.breastmilkMl ? ` · ${today.breastmilkMl} ml breast milk` : ''}</div></div>
     ${days.some((d) => d.pumpedMl > 0) ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${today.pumpCount} session${today.pumpCount === 1 ? '' : 's'}</div></div>` : ''}
-    ${estTile('supplyMl', 'Est. supply', '🧪')}
-    ${estTile('appetiteMl', 'Est. appetite', '🧪')}
+    ${estTile('supplyMl', 'Est. supply', '🧪', (d) => `${d.supplyMl} ml`, () => 'per feed')}
+    ${estTile('appetiteMlHr', 'Est. appetite', '🧪', (d) => `${d.appetiteMlHr} ml/hr`, (d) => `${d.appetiteMl} ml over ${d.appetiteHours} hr`)}
     <div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>
     <div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>
   </div>`
@@ -1282,18 +1350,52 @@ async function loadReports() {
   }
 
   // Inferred, never measured - so the card, the subtitle and the tiles all say
-  // PROTOTYPE, and a footnote spells out where the numbers come from.
-  const estSeries = [
-    { key: 'supply', valueOf: (d) => d.supplyMl, samplesOf: (d) => d.supplySamples },
-    { key: 'appetite', valueOf: (d) => d.appetiteMl, samplesOf: (d) => d.appetiteSamples },
-  ]
-  if (days.some((d) => d.supplyMl != null || d.appetiteMl != null)) {
+  // PROTOTYPE, and a footnote spells out where the numbers come from. Supply
+  // and appetite are now separate cards because they no longer share units:
+  // supply is ml per pumping, appetite is ml per hour of elapsed feed interval.
+  if (days.some((d) => d.supplyMl != null)) {
     feedingHtml += `<div class="chart-card">
-      <h3>Estimated supply &amp; appetite <span class="proto-tag">PROTOTYPE</span></h3>
+      <h3>Estimated supply <span class="proto-tag">PROTOTYPE</span> ${helpBtn('supply')}</h3>
       <div class="chart-sub">ml per feed — inferred, not measured</div>
-      ${legend(['supply', 'appetite'])}
-      ${estimateChart(days, estSeries)}
-      <div class="chart-note">PROTOTYPE · Supply: pumps starting 60+ min after the last feed or pump. Appetite: bottle feeds with no breastfeeding within 60 min. Several samples in a day reconcile to their median; the line is a 7-day average.</div>
+      ${helpNote('supply', `<p><strong>What a dot is.</strong> A pumping session that started 60+ minutes after the last feed or pump, so the breast had refilled and what came out stands in for one feed's worth of milk.</p>
+        <p><strong>Why days are missing.</strong> Pumps too soon after a feed measure a partly emptied breast, so they are not counted. Days with several qualifying pumps show the median of them.</p>
+        <p><strong>The line</strong> is a trailing 7-day average, drawn only where the window holds at least two samples.</p>
+        <p>Inferred from the log, never measured — treat it as a direction, not a number.</p>`)}
+      ${estimateChart(days, [{ key: 'supply', valueOf: (d) => d.supplyMl, samplesOf: (d) => d.supplySamples }])}
+    </div>`
+  }
+
+  if (days.some((d) => d.appetiteMlHr != null)) {
+    // Benchmark: standard pediatric intake guidance for a term infant is
+    // ~150 ml/kg/day (commonly quoted range 120-180), which is also what WHO's
+    // feeding guidance for supplemented infants uses. WHO publishes no ml/hr
+    // figure, so the daily range is divided by 24 to meet the estimate's units
+    // — fair here because a newborn feeds around the clock.
+    const kgOn = (dateKey) => {
+      const prior = weights.filter((w) => w.date <= dateKey).pop() || weights[0] || latestWeight
+      return prior ? prior.weight_g / 1000 : null
+    }
+    const perHr = (mlPerKgDay) => (d) => {
+      const kg = kgOn(d.date)
+      return kg == null ? null : (kg * mlPerKgDay) / 24
+    }
+    const band = weights.length || latestWeight
+      ? { loOf: perHr(120), hiOf: perHr(180), midOf: perHr(150) }
+      : null
+    feedingHtml += `<div class="chart-card">
+      <h3>Estimated appetite <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
+      <div class="chart-sub">ml per hour since the previous feed started</div>
+      ${helpNote('appetite', `<p><strong>What a dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
+        <p><strong>Why ml per hour.</strong> How much she takes in one sitting mostly reflects how long she went without, so the volume is divided by the hours since the previous feed <em>started</em>. That makes a 4-hourly night comparable to a 2-hourly day. Intervals under 1 hour or over 8 are dropped as unreliable.</p>
+        <p><strong>The line</strong> is a trailing 7-day average of the daily medians.</p>
+        ${band ? '<p><strong>The shaded band</strong> is typical intake for her most recent weight — 120–180 ml/kg/day, dashed line at the commonly quoted 150 — spread evenly over 24 hours. It is general pediatric guidance, not a target: her own pediatrician and her growth curve are what matter.</p>' : ''}
+        <p>Inferred from the log, never measured — treat it as a direction, not a number.</p>`)}
+      ${estimateChart(days, [{
+        key: 'appetite',
+        valueOf: (d) => d.appetiteMlHr,
+        samplesOf: (d) => d.appetiteSamples,
+        tipExtra: (d) => ` — ${d.appetiteMl} ml over ${d.appetiteHours} hr`,
+      }], { band, fmt: (v) => `${v} ml/hr` })}
     </div>`
   }
   feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],
@@ -1382,10 +1484,12 @@ async function loadReports() {
 
   const sections = [
     { id: 'today', label: 'Today', html: tilesHtml },
-    { id: 'feeding', label: 'Feeding', html: feedingHtml },
-    { id: 'diapers', label: 'Diapers', html: diapersHtml },
-    { id: 'weight', label: 'Growth', html: growthHtml },
     { id: 'history', label: 'History', html: historyHtml },
+    // Growth is measurement-driven, not per-day, so the range toggle only
+    // rides along with the tabs whose charts are one-bar-per-day.
+    { id: 'feeding', label: 'Feeding', html: rangeToggle() + feedingHtml },
+    { id: 'weight', label: 'Growth', html: growthHtml },
+    { id: 'diapers', label: 'Diapers', html: rangeToggle() + diapersHtml },
   ]
   let active = localStorage.getItem('reportsTab') || 'today'
   if (!sections.some((s) => s.id === active)) active = 'today'
@@ -1403,6 +1507,19 @@ async function loadReports() {
       localStorage.setItem('reportsTab', btn.dataset.rtab)
       el.querySelectorAll('[data-rtab]').forEach((b) => b.classList.toggle('active', b === btn))
       el.querySelectorAll('.rsection').forEach((sec) => sec.classList.toggle('hidden', sec.id !== `rsec-${btn.dataset.rtab}`))
+    }
+  })
+  el.querySelectorAll('[data-help]').forEach((btn) => {
+    btn.onclick = () => {
+      const note = el.querySelector(`[data-help-for="${btn.dataset.help}"]`)
+      const open = note.classList.toggle('hidden')
+      btn.classList.toggle('active', !open)
+    }
+  })
+  el.querySelectorAll('[data-range]').forEach((btn) => {
+    btn.onclick = () => {
+      localStorage.setItem('reportsRange', btn.dataset.range)
+      loadReports()
     }
   })
   el.querySelectorAll('.chart-svg').forEach((svg) => chartTip(svg))
