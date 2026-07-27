@@ -324,7 +324,7 @@ app.get('/api/milestones/auto', requireAuth, (req, res) => {
 // Last time each type was logged — shown on the log buttons to prevent
 // double-logging (two parents, no live sync).
 app.get('/api/events/latest', requireAuth, (req, res) => {
-  res.json(db.prepare('SELECT type, MAX(occurred_at) AS occurred_at FROM events GROUP BY type').all())
+  res.json(db.prepare('SELECT type, kind, MAX(occurred_at) AS occurred_at FROM events GROUP BY type, kind').all())
 })
 
 app.post('/api/events', requireAuth, (req, res) => {
