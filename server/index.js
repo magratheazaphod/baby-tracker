@@ -861,6 +861,7 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
         formulaCount: 0,
         formulaMl: 0,
         breastmilkMl: 0,
+        breastmilkCount: 0,
         pumpCount: 0,
         pumpedMl: 0,
         pee: 0,
@@ -879,10 +880,16 @@ app.get('/api/reports/daily', requireAuth, (req, res) => {
       d.breastfeedMin += e.duration_min || 0
     } else if (e.type === 'formula') {
       // formulaCount/formulaMl total ALL bottles (historical field names);
-      // breastmilkMl carves out the pumped-milk share.
+      // the breastmilk* pair carves out the pumped-milk share, count and volume
+      // both, so the two kinds can be reported as distinct feeds. Subtract to
+      // get the formula-only share - the totals stay the source of truth for
+      // existing callers.
       d.formulaCount++
       d.formulaMl += e.amount_ml || 0
-      if (e.kind === 'breastmilk') d.breastmilkMl += e.amount_ml || 0
+      if (e.kind === 'breastmilk') {
+        d.breastmilkCount++
+        d.breastmilkMl += e.amount_ml || 0
+      }
     } else if (e.type === 'pump') {
       d.pumpCount++
       d.pumpedMl += e.amount_ml || 0
