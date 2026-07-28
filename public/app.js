@@ -1261,6 +1261,23 @@ function helpNote(id, html) {
   return `<div class="chart-note hidden" data-help-for="${id}">${html}</div>`
 }
 
+// A collapsible row of tiles. Collapsed state lives in localStorage per group,
+// so each parent's phone keeps whichever rows they actually read. A group whose
+// tiles all came back empty renders nothing rather than an empty heading.
+function tileGroupCollapsed(id) {
+  return localStorage.getItem(`tiles:${id}`) === 'closed'
+}
+
+function tileGroup(id, label, tiles) {
+  const body = tiles.filter(Boolean).join('')
+  if (!body) return ''
+  const open = !tileGroupCollapsed(id)
+  return `<div class="tile-group">
+    <button class="tile-group-label" data-tile-group="${id}" aria-expanded="${open}" aria-controls="tiles-${id}"><span class="caret">▶</span>${label}</button>
+    <div class="tiles" id="tiles-${id}"${open ? '' : ' hidden'}>${body}</div>
+  </div>`
+}
+
 function chartCard(title, sub, keys, svg) {
   return `<div class="chart-card"><h3>${title}</h3><div class="chart-sub">${sub}</div>${keys.length > 1 ? legend(keys) : ''}${svg}</div>`
 }
@@ -1296,7 +1313,7 @@ function fillDays(days) {
   while (true) {
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     out.push(
-      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0, supplyMl: null, supplySamples: 0, appetiteMl: null, appetiteMlHr: null, appetiteHours: null, appetiteSamples: 0 }
+      byDate.get(key) || { date: key, breastfeedCount: 0, breastfeedMin: 0, formulaCount: 0, formulaMl: 0, breastmilkMl: 0, breastmilkCount: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0, supplyMl: null, supplySamples: 0, appetiteMl: null, appetiteMlHr: null, appetiteHours: null, appetiteSamples: 0 }
     )
     if (key >= today) break
     cursor.setDate(cursor.getDate() + 1)
@@ -1313,7 +1330,7 @@ async function loadReports() {
   }
   const days = fillDays(rawDays)
   const todayKey = dayKey(new Date().toISOString())
-  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
+  const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, breastfeedMin: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, breastmilkCount: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
   const lastWeight = weights[weights.length - 1]
 
   const unit = localStorage.getItem('weightUnit') || 'lb'
@@ -1322,24 +1339,56 @@ async function loadReports() {
   // Estimates are sparse - a day only produces one when a qualifying pump or
   // isolated bottle happened - so the tile shows the most recent one and dates it.
   const lastEst = (key) => [...days].reverse().find((d) => d[key] != null)
-  const estTile = (key, label, emoji, value, sub) => {
+  const estTile = (key, label, emoji, value, sub, cls = '') => {
     const d = lastEst(key)
     if (!d) return ''
     const when = d.date === todayKey ? 'today' : fmtDayHeader(d.date)
-    return `<div class="tile"><div class="tile-label">${emoji} ${label} <span class="proto-tag">PROTOTYPE</span></div><div class="tile-value">${value(d)}</div><div class="tile-sub">${sub(d)} · ${when}</div></div>`
+    return `<div class="tile ${cls}"><div class="tile-label">${emoji} ${label} <span class="proto-tag">PROTOTYPE</span></div><div class="tile-value">${value(d)}</div><div class="tile-sub">${sub(d)} · ${when}</div></div>`
   }
 
-  const tilesHtml = `<div class="tiles">
-    <div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>
-    <div class="tile"><div class="tile-label">🍼 Bottle today</div><div class="tile-value">${today.formulaMl} ml</div><div class="tile-sub">${today.formulaCount} feed${today.formulaCount === 1 ? '' : 's'}${today.breastmilkMl ? ` · ${today.breastmilkMl} ml breast milk` : ''}</div></div>
-    ${days.some((d) => d.pumpedMl > 0) ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${today.pumpCount} session${today.pumpCount === 1 ? '' : 's'}</div></div>` : ''}
-    ${estTile('supplyMl', 'Est. supply', '🧪', (d) => `${d.supplyMl} ml`, () => 'per feed')}
-    ${estTile('appetiteMlHr', 'Est. appetite', '🧪', (d) => `${d.appetiteMlHr} ml/hr`, (d) => `${d.appetiteMl} ml over ${d.appetiteHours} hr`)}
-    <div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>
-    <div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>
-  </div>`
+  // One flat grid of tiles was a wall to scroll past on a phone, and it mixed
+  // measured counts with inferred estimates. The tiles now group by what they
+  // answer, each group collapsible from its heading and remembered per device -
+  // a parent who never looks at the estimates can fold them away for good.
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const formulaOnlyMl = today.formulaMl - today.breastmilkMl
+  const formulaOnlyCount = today.formulaCount - today.breastmilkCount
+  const bfMin = today.breastfeedMin
+  const bfHrMin = bfMin >= 60 ? `${Math.floor(bfMin / 60)} hr ${bfMin % 60} min` : `${bfMin} min`
 
+  const tilesHtml = [
+    tileGroup('breastmilk', 'Breast milk', [
+      `<div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>`,
+      days.some((d) => d.pumpedMl > 0)
+        ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${plural(today.pumpCount, 'session')}</div></div>`
+        : '',
+      bfMin
+        ? `<div class="tile wide"><div class="tile-label">⏱️ Time on the breast today</div><div class="tile-value">${bfHrMin}</div><div class="tile-sub">${today.breastfeedCount ? `${Math.round(bfMin / today.breastfeedCount)} min average per feed` : ''}</div></div>`
+        : '',
+    ]),
+    tileGroup('diapers', 'Diapers', [
+      `<div class="tile"><div class="tile-label">💧 Pee today</div><div class="tile-value">${today.pee}</div></div>`,
+      `<div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>`,
+    ]),
+    tileGroup('bottle', 'Bottle feeding', [
+      `<div class="tile"><div class="tile-label">🍼 Formula today</div><div class="tile-value">${formulaOnlyMl} ml</div><div class="tile-sub">${plural(formulaOnlyCount, 'feed')}</div></div>`,
+      `<div class="tile"><div class="tile-label">🥛 Breast milk today</div><div class="tile-value">${today.breastmilkMl} ml</div><div class="tile-sub">${plural(today.breastmilkCount, 'feed')}</div></div>`,
+    ]),
+    tileGroup('estimates', 'Supply &amp; appetite', [
+      estTile('supplyMl', 'Est. supply', '🧪', (d) => `${d.supplyMl} ml`, () => 'per feed'),
+      estTile('appetiteMl', 'Est. appetite', '🧪', (d) => `${d.appetiteMl} ml`, () => 'per feed'),
+      estTile('appetiteMlHr', 'Est. appetite buildup', '🧪', (d) => `${d.appetiteMlHr} ml/hr`, (d) => `${d.appetiteMl} ml over ${d.appetiteHours} hr`, 'wide'),
+    ]),
+  ].join('')
+
+  // Time at the breast leads the tab: it is the one feeding number that is
+  // measured rather than inferred, and it is the one the parent doing it wants
+  // to see trended.
   let feedingHtml = ''
+  if (days.some((d) => d.breastfeedMin > 0)) {
+    feedingHtml += chartCard('Breastfeeding per day', 'minutes at the breast', ['breastfeed'],
+      barChart(days, ['breastfeed'], (d) => d.breastfeedMin || 0, (v) => `${v} min`))
+  }
   if (days.some((d) => d.formulaMl > 0)) {
     feedingHtml += chartCard('Bottle per day', 'ml by bottle — formula vs pumped breast milk', ['formula', 'breastmilk'],
       barChart(days, ['formula', 'breastmilk'],
@@ -1351,18 +1400,27 @@ async function loadReports() {
   }
 
   // Inferred, never measured - so the card, the subtitle and the tiles all say
-  // PROTOTYPE, and a footnote spells out where the numbers come from. Supply
-  // and appetite are now separate cards because they no longer share units:
-  // supply is ml per pumping, appetite is ml per hour of elapsed feed interval.
-  if (days.some((d) => d.supplyMl != null)) {
+  // PROTOTYPE, and a footnote spells out where the numbers come from.
+  //
+  // Two cards. The first puts appetite and supply back on shared axes: both are
+  // ml in one feed, and the question they answer together - does a feed's worth
+  // of milk cover a feed's worth of hunger - only reads off a single pair of
+  // axes. The second keeps appetite as ml/hr, which supply has no counterpart
+  // for and which is the schedule-independent view.
+  if (days.some((d) => d.supplyMl != null || d.appetiteMl != null)) {
     feedingHtml += `<div class="chart-card">
-      <h3>Estimated supply <span class="proto-tag">PROTOTYPE</span> ${helpBtn('supply')}</h3>
-      <div class="chart-sub">ml per feed — inferred, not measured</div>
-      ${helpNote('supply', `<p><strong>What a dot is.</strong> A pumping session that started 60+ minutes after the last feed or pump, so the breast had refilled and what came out stands in for one feed's worth of milk.</p>
-        <p><strong>Why days are missing.</strong> Pumps too soon after a feed measure a partly emptied breast, so they are not counted. Days with several qualifying pumps show the median of them.</p>
-        <p><strong>The line</strong> is a trailing 7-day average, drawn only where the window holds at least two samples.</p>
-        <p>Inferred from the log, never measured — treat it as a direction, not a number.</p>`)}
-      ${estimateChart(days, [{ key: 'supply', valueOf: (d) => d.supplyMl, samplesOf: (d) => d.supplySamples }])}
+      <h3>Appetite &amp; supply per feed <span class="proto-tag">PROTOTYPE</span> ${helpBtn('perfeed')}</h3>
+      <div class="chart-sub">ml in one feed — inferred, not measured</div>
+      ${legend(['appetite', 'supply'])}
+      ${helpNote('perfeed', `<p><strong>What a supply dot is.</strong> A pumping session that started 60+ minutes after the last feed or pump, so the breast had refilled and what came out stands in for one feed's worth of milk.</p>
+        <p><strong>What an appetite dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
+        <p><strong>Why days are missing.</strong> Pumps too soon after a feed measure a partly emptied breast, and bottles alongside breastfeeding do not measure a whole meal, so neither is counted. Days with several qualifying samples show the median of them.</p>
+        <p><strong>The lines</strong> are trailing 7-day averages, drawn only where the window holds at least two samples.</p>
+        <p>Both are inferred from the log, never measured — treat them as a direction, not a number.</p>`)}
+      ${estimateChart(days, [
+        { key: 'appetite', valueOf: (d) => d.appetiteMl, samplesOf: (d) => d.appetiteSamples },
+        { key: 'supply', valueOf: (d) => d.supplyMl, samplesOf: (d) => d.supplySamples },
+      ])}
     </div>`
   }
 
@@ -1384,7 +1442,7 @@ async function loadReports() {
       ? { loOf: perHr(120), hiOf: perHr(180), midOf: perHr(150) }
       : null
     feedingHtml += `<div class="chart-card">
-      <h3>Estimated appetite <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
+      <h3>Appetite buildup per hour <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
       <div class="chart-sub">ml per hour since the previous feed started</div>
       ${helpNote('appetite', `<p><strong>What a dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
         <p><strong>Why ml per hour.</strong> How much she takes in one sitting mostly reflects how long she went without, so the volume is divided by the hours since the previous feed <em>started</em>. That makes a 4-hourly night comparable to a 2-hourly day. Intervals under 1 hour or over 8 are dropped as unreliable.</p>
@@ -1515,6 +1573,15 @@ async function loadReports() {
       const note = el.querySelector(`[data-help-for="${btn.dataset.help}"]`)
       const open = note.classList.toggle('hidden')
       btn.classList.toggle('active', !open)
+    }
+  })
+  el.querySelectorAll('[data-tile-group]').forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.dataset.tileGroup
+      const open = btn.getAttribute('aria-expanded') === 'true'
+      btn.setAttribute('aria-expanded', String(!open))
+      el.querySelector(`#tiles-${id}`).hidden = open
+      localStorage.setItem(`tiles:${id}`, open ? 'closed' : 'open')
     }
   })
   el.querySelectorAll('[data-range]').forEach((btn) => {
