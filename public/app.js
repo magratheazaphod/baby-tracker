@@ -277,7 +277,7 @@ function openSheet(type, { kind, existing } = {}) {
       <label>Amount pumped (ml)
         <div class="stepper">
           <button type="button" data-step="-1">−</button>
-          <input type="number" name="amount_ml" inputmode="numeric" min="5" step="5" value="${last}" required>
+          <input type="number" name="amount_ml" inputmode="numeric" min="1" step="1" value="${last}" required>
           <button type="button" data-step="1">+</button>
         </div>
       </label>
