@@ -93,8 +93,9 @@ npm start                 # reads .env; http://localhost:3000; dev secret "baby"
 - Login via curl for API tests: POST `/api/login` `{secret, user}` with a
   cookie jar; note zsh doesn't word-split `$VAR` - write curl flags out.
 - After server-file edits, restart: `pkill -f 'server/index.js'` then re-launch.
-- Verify UI in a browser (Chrome MCP tools): coordinate clicks are unreliable
-  at scaled DPI - drive handlers with `javascript_tool` instead.
+- Don't use claude-in-chrome to verify UI changes here - the user checks the
+  UI themselves. Confirm server-side behavior (curl, logs, code reading) and
+  hand off for a manual look instead.
 - Local `data/` is disposable dev scratch full of fake test data.
 - The login rate limiter (20/15min/IP) will lock you out during repeated auth
   tests - restart the server to reset it.

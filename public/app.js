@@ -773,13 +773,19 @@ function fmtAgo(iso) {
 
 // Stamp each log button with when that thing was last logged. Diaper buttons
 // key on type+kind so each (pee/poop/both) shows its own last time - a
-// glance-check against double-logging that particular kind.
+// glance-check against double-logging that particular kind. Buttons with no
+// data-kind (Bottle) aren't kind-specific, so they take the latest across all
+// kinds of that type (formula and breastmilk bottles both count).
 async function loadLastLogged() {
   try {
     const rows = await api('/api/events/latest')
     const byKey = Object.fromEntries(rows.map((r) => [`${r.type}|${r.kind || ''}`, r.occurred_at]))
+    const byType = {}
+    for (const r of rows) {
+      if (!byType[r.type] || r.occurred_at > byType[r.type]) byType[r.type] = r.occurred_at
+    }
     document.querySelectorAll('.log-btn[data-log]').forEach((btn) => {
-      const last = byKey[`${btn.dataset.log}|${btn.dataset.kind || ''}`]
+      const last = btn.dataset.kind ? byKey[`${btn.dataset.log}|${btn.dataset.kind}`] : byType[btn.dataset.log]
       let el = btn.querySelector('.log-last')
       if (!el) {
         el = document.createElement('span')
