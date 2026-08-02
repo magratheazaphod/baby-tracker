@@ -99,9 +99,9 @@ function describe(e) {
     case 'breastfeed':
       return { emoji: '🤱', title: 'Breastfeeding', sub: e.duration_min ? `${e.duration_min} min` : '' }
     case 'formula':
-      return { emoji: '🍼', title: `Bottle · ${e.kind === 'breastmilk' ? 'Breast milk' : 'Formula'}`, sub: `${e.amount_ml} ml` }
+      return { emoji: '🍼', title: `Bottle · ${e.kind === 'breastmilk' ? 'Breast milk' : 'Formula'}`, sub: `${e.amount_ml} mL` }
     case 'pump':
-      return { emoji: '🫙', title: 'Pumping', sub: `${e.amount_ml} ml` }
+      return { emoji: '🫙', title: 'Pumping', sub: `${e.amount_ml} mL` }
     case 'diaper': {
       const label = { pee: 'Pee', poop: 'Poop', both: 'Pee + poop' }[e.kind] || e.kind
       const emoji = { pee: '💧', poop: '💩', both: '💧💩' }[e.kind] || '💧'
@@ -263,7 +263,7 @@ function openSheet(type, { kind, existing } = {}) {
         <button type="button" data-kind="formula">Formula</button>
         <button type="button" data-kind="breastmilk">Breast milk</button>
       </div>
-      <label>Amount (ml)
+      <label>Amount (mL)
         <div class="stepper">
           <button type="button" data-step="-1">−</button>
           <input type="number" name="amount_ml" inputmode="numeric" min="${stepMl}" step="${stepMl}" value="${last}" required>
@@ -274,7 +274,7 @@ function openSheet(type, { kind, existing } = {}) {
   } else if (type === 'pump') {
     const last = existing?.amount_ml ?? Number(localStorage.getItem('lastPumpMl') || 60)
     fields = `${fieldTime(timeVal)}
-      <label>Amount pumped (ml)
+      <label>Amount pumped (mL)
         <div class="stepper">
           <button type="button" data-step="-1">−</button>
           <input type="number" name="amount_ml" inputmode="numeric" min="1" step="1" value="${last}" required>
@@ -958,7 +958,7 @@ function estimateChart(days, seriesList, opts = {}) {
   const plotW = W - M.left - M.right
   const plotH = H - M.top - M.bottom
   const band = opts.band
-  const fmt = opts.fmt || ((v) => `${v} ml`)
+  const fmt = opts.fmt || ((v) => `${v} mL`)
   const all = seriesList.flatMap((s) => days.map((d) => s.valueOf(d)).filter((v) => v != null))
   if (band) all.push(...days.map((d) => band.hiOf(d)).filter((v) => v != null))
   const yMax = niceCeil(Math.max(1, ...all))
@@ -1366,7 +1366,7 @@ async function loadReports() {
     tileGroup('breastmilk', 'Breast milk', [
       `<div class="tile"><div class="tile-label">🤱 Breastfeeds today</div><div class="tile-value">${today.breastfeedCount}</div></div>`,
       days.some((d) => d.pumpedMl > 0)
-        ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} ml</div><div class="tile-sub">${plural(today.pumpCount, 'session')}</div></div>`
+        ? `<div class="tile"><div class="tile-label">🫙 Pumped today</div><div class="tile-value">${today.pumpedMl} mL</div><div class="tile-sub">${plural(today.pumpCount, 'session')}</div></div>`
         : '',
       bfMin
         ? `<div class="tile wide"><div class="tile-label">⏱️ Time on the breast today</div><div class="tile-value">${bfHrMin}</div><div class="tile-sub">${today.breastfeedCount ? `${Math.round(bfMin / today.breastfeedCount)} min average per feed` : ''}</div></div>`
@@ -1377,13 +1377,13 @@ async function loadReports() {
       `<div class="tile"><div class="tile-label">💩 Poop today</div><div class="tile-value">${today.poop}</div></div>`,
     ]),
     tileGroup('bottle', 'Bottle feeding', [
-      `<div class="tile"><div class="tile-label">🍼 Formula today</div><div class="tile-value">${formulaOnlyMl} ml</div><div class="tile-sub">${plural(formulaOnlyCount, 'feed')}</div></div>`,
-      `<div class="tile"><div class="tile-label">🥛 Breast milk today</div><div class="tile-value">${today.breastmilkMl} ml</div><div class="tile-sub">${plural(today.breastmilkCount, 'feed')}</div></div>`,
+      `<div class="tile"><div class="tile-label">🍼 Formula today</div><div class="tile-value">${formulaOnlyMl} mL</div><div class="tile-sub">${plural(formulaOnlyCount, 'feed')}</div></div>`,
+      `<div class="tile"><div class="tile-label">🥛 Breast milk today</div><div class="tile-value">${today.breastmilkMl} mL</div><div class="tile-sub">${plural(today.breastmilkCount, 'feed')}</div></div>`,
     ]),
     tileGroup('estimates', 'Supply &amp; appetite', [
-      estTile('supplyMl', 'Est. supply', '🧪', (d) => `${d.supplyMl} ml`, () => 'per feed'),
-      estTile('appetiteMl', 'Est. appetite', '🧪', (d) => `${d.appetiteMl} ml`, () => 'per feed'),
-      estTile('appetiteMlHr', 'Est. appetite buildup', '🧪', (d) => `${d.appetiteMlHr} ml/hr`, (d) => `${d.appetiteMl} ml over ${d.appetiteHours} hr`, 'wide'),
+      estTile('supplyMl', 'Est. supply', '🧪', (d) => `${d.supplyMl} mL`, () => 'per feed'),
+      estTile('appetiteMl', 'Est. appetite', '🧪', (d) => `${d.appetiteMl} mL`, () => 'per feed'),
+      estTile('appetiteMlHr', 'Est. appetite buildup', '🧪', (d) => `${d.appetiteMlHr} mL/hr`, (d) => `${d.appetiteMl} mL over ${d.appetiteHours} hr`, 'wide'),
     ]),
   ].join('')
 
@@ -1398,11 +1398,11 @@ async function loadReports() {
   if (days.some((d) => d.formulaMl > 0)) {
     feedingHtml += chartCard('Bottle Feeding', 'mL per Day', ['formula', 'breastmilk'],
       barChart(days, ['formula', 'breastmilk'],
-        (d, k) => (k === 'breastmilk' ? d.breastmilkMl || 0 : d.formulaMl - (d.breastmilkMl || 0)), (v) => `${v} ml`))
+        (d, k) => (k === 'breastmilk' ? d.breastmilkMl || 0 : d.formulaMl - (d.breastmilkMl || 0)), (v) => `${v} mL`))
   }
   if (days.some((d) => d.pumpedMl > 0)) {
-    feedingHtml += chartCard('Pumped per day', 'ml expressed by pumping', ['pump'],
-      barChart(days, ['pump'], (d) => d.pumpedMl || 0, (v) => `${v} ml`))
+    feedingHtml += chartCard('Pumping', 'mL per Day', ['pump'],
+      barChart(days, ['pump'], (d) => d.pumpedMl || 0, (v) => `${v} mL`))
   }
 
   // Inferred, never measured - so the card, the subtitle and the tiles all say
@@ -1416,7 +1416,7 @@ async function loadReports() {
   if (days.some((d) => d.supplyMl != null || d.appetiteMl != null)) {
     feedingHtml += `<div class="chart-card">
       <h3>Appetite vs Supply <span class="proto-tag">PROTOTYPE</span> ${helpBtn('perfeed')}</h3>
-      <div class="chart-sub">ml per feed</div>
+      <div class="chart-sub">mL per feed</div>
       ${legend(['appetite', 'supply'])}
       ${helpNote('perfeed', `<p><strong>What a supply dot is.</strong> A pumping session that started 60+ minutes after the last feed or pump, so the breast had refilled and what came out stands in for one feed's worth of milk.</p>
         <p><strong>What an appetite dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
@@ -1449,18 +1449,18 @@ async function loadReports() {
       : null
     feedingHtml += `<div class="chart-card">
       <h3>Appetite Buildup <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
-      <div class="chart-sub">ml per hour</div>
+      <div class="chart-sub">mL per hour</div>
       ${helpNote('appetite', `<p><strong>What a dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
-        <p><strong>Why ml per hour.</strong> How much she takes in one sitting mostly reflects how long she went without, so the volume is divided by the hours since the previous feed <em>started</em>. That makes a 4-hourly night comparable to a 2-hourly day. Intervals under 1 hour or over 8 are dropped as unreliable.</p>
+        <p><strong>Why mL per hour.</strong> How much she takes in one sitting mostly reflects how long she went without, so the volume is divided by the hours since the previous feed <em>started</em>. That makes a 4-hourly night comparable to a 2-hourly day. Intervals under 1 hour or over 8 are dropped as unreliable.</p>
         <p><strong>The line</strong> is a trailing 7-day average of the daily medians.</p>
-        ${band ? '<p><strong>The shaded band</strong> is typical intake for her most recent weight — 120–180 ml/kg/day, dashed line at the commonly quoted 150 — spread evenly over 24 hours. It is general pediatric guidance, not a target: her own pediatrician and her growth curve are what matter.</p>' : ''}
+        ${band ? '<p><strong>The shaded band</strong> is typical intake for her most recent weight — 120–180 mL/kg/day, dashed line at the commonly quoted 150 — spread evenly over 24 hours. It is general pediatric guidance, not a target: her own pediatrician and her growth curve are what matter.</p>' : ''}
         <p>Inferred from the log, never measured — treat it as a direction, not a number.</p>`)}
       ${estimateChart(days, [{
         key: 'appetite',
         valueOf: (d) => d.appetiteMlHr,
         samplesOf: (d) => d.appetiteSamples,
-        tipExtra: (d) => ` — ${d.appetiteMl} ml over ${d.appetiteHours} hr`,
-      }], { band, fmt: (v) => `${v} ml/hr` })}
+        tipExtra: (d) => ` — ${d.appetiteMl} mL over ${d.appetiteHours} hr`,
+      }], { band, fmt: (v) => `${v} mL/hr` })}
     </div>`
   }
   feedingHtml += chartCard('Feeding Sessions', 'Times per Day', ['breastfeed', 'bottle'],
@@ -1540,12 +1540,12 @@ async function loadReports() {
   if (!growthHtml) growthHtml = '<div class="chart-card"><h3>Growth</h3><div class="chart-sub">no measurements yet</div></div>'
 
   const historyHtml = `<div class="report-table-wrap"><table class="report-table">
-    <tr><th>Day</th><th>🤱</th><th>🍼 ml</th><th>💧</th><th>💩</th></tr>
+    <tr><th>Day</th><th>🤱</th><th>🍼 mL</th><th>💧</th><th>💩</th></tr>
     ${[...days].reverse().slice(0, 14).map((d) =>
       `<tr><td>${fmtDayHeader(d.date)}</td><td>${d.breastfeedCount}</td><td>${d.formulaMl}${d.breastmilkMl ? ` <span class="bm-share">(${d.breastmilkMl} bm)</span>` : ''}</td><td>${d.pee}</td><td>${d.poop}</td></tr>`
     ).join('')}
   </table></div>
-  <div class="chart-sub">🍼 ml is total bottle volume; (bm) is the breast-milk share of it</div>`
+  <div class="chart-sub">🍼 mL is total bottle volume; (bm) is the breast-milk share of it</div>`
 
   const sections = [
     { id: 'today', label: 'Today', html: tilesHtml },
