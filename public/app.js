@@ -1392,11 +1392,11 @@ async function loadReports() {
   // to see trended.
   let feedingHtml = ''
   if (days.some((d) => d.breastfeedMin > 0)) {
-    feedingHtml += chartCard('Breastfeeding per day', 'minutes at the breast', ['breastfeed'],
+    feedingHtml += chartCard('Breastfeeding', 'Minutes per day', ['breastfeed'],
       barChart(days, ['breastfeed'], (d) => d.breastfeedMin || 0, (v) => `${v} min`))
   }
   if (days.some((d) => d.formulaMl > 0)) {
-    feedingHtml += chartCard('Bottle per day', 'ml by bottle — formula vs pumped breast milk', ['formula', 'breastmilk'],
+    feedingHtml += chartCard('Bottle Feeding', 'mL per Day', ['formula', 'breastmilk'],
       barChart(days, ['formula', 'breastmilk'],
         (d, k) => (k === 'breastmilk' ? d.breastmilkMl || 0 : d.formulaMl - (d.breastmilkMl || 0)), (v) => `${v} ml`))
   }
@@ -1415,8 +1415,8 @@ async function loadReports() {
   // for and which is the schedule-independent view.
   if (days.some((d) => d.supplyMl != null || d.appetiteMl != null)) {
     feedingHtml += `<div class="chart-card">
-      <h3>Appetite &amp; supply per feed <span class="proto-tag">PROTOTYPE</span> ${helpBtn('perfeed')}</h3>
-      <div class="chart-sub">ml in one feed — inferred, not measured</div>
+      <h3>Appetite vs Supply <span class="proto-tag">PROTOTYPE</span> ${helpBtn('perfeed')}</h3>
+      <div class="chart-sub">ml per feed</div>
       ${legend(['appetite', 'supply'])}
       ${helpNote('perfeed', `<p><strong>What a supply dot is.</strong> A pumping session that started 60+ minutes after the last feed or pump, so the breast had refilled and what came out stands in for one feed's worth of milk.</p>
         <p><strong>What an appetite dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
@@ -1448,8 +1448,8 @@ async function loadReports() {
       ? { loOf: perHr(120), hiOf: perHr(180), midOf: perHr(150) }
       : null
     feedingHtml += `<div class="chart-card">
-      <h3>Appetite buildup per hour <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
-      <div class="chart-sub">ml per hour since the previous feed started</div>
+      <h3>Appetite Buildup <span class="proto-tag">PROTOTYPE</span> ${helpBtn('appetite')}</h3>
+      <div class="chart-sub">ml per hour</div>
       ${helpNote('appetite', `<p><strong>What a dot is.</strong> A bottle with no breastfeeding within 60 minutes of it — usually an overnight feed — is the one time we know exactly how much went in. Bottles less than an hour apart count as one feeding.</p>
         <p><strong>Why ml per hour.</strong> How much she takes in one sitting mostly reflects how long she went without, so the volume is divided by the hours since the previous feed <em>started</em>. That makes a 4-hourly night comparable to a 2-hourly day. Intervals under 1 hour or over 8 are dropped as unreliable.</p>
         <p><strong>The line</strong> is a trailing 7-day average of the daily medians.</p>
@@ -1463,7 +1463,7 @@ async function loadReports() {
       }], { band, fmt: (v) => `${v} ml/hr` })}
     </div>`
   }
-  feedingHtml += chartCard('Feeds per day', 'breastfeeding sessions + bottle feeds', ['breastfeed', 'bottle'],
+  feedingHtml += chartCard('Feeding Sessions', 'Times per Day', ['breastfeed', 'bottle'],
     barChart(days, ['breastfeed', 'bottle'], (d, k) => (k === 'breastfeed' ? d.breastfeedCount : d.formulaCount), (v) => `${v}`))
 
   const diapersHtml = chartCard('Diapers per day', 'pee and poop counts', ['pee', 'poop'],
