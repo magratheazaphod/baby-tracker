@@ -1425,10 +1425,14 @@ async function loadGrowth() {
 }
 
 async function loadReports() {
-  const { days: rawDays, weights, heights, heads = [], latestWeight = null } = await api(`/api/reports/daily?days=${REPORT_DAYS}`)
   // Growth tiles/charts are all-time (never windowed like the rest of this
-  // report), so old measurements never silently drop off.
-  const growthData = await api('/api/reports/growth').catch(() => ({ weights: [], heights: [], heads: [] }))
+  // report), so old measurements never silently drop off. The two fetches are
+  // independent - issue them together.
+  const [daily, growthData] = await Promise.all([
+    api(`/api/reports/daily?days=${REPORT_DAYS}`),
+    api('/api/reports/growth').catch(() => ({ weights: [], heights: [], heads: [] })),
+  ])
+  const { days: rawDays, weights, heights, heads = [], latestWeight = null } = daily
   const el = $('#reports')
   if (!rawDays.length && !weights.length && !heights.length && !heads.length &&
       !growthData.weights.length && !growthData.heights.length && !(growthData.heads || []).length) {
@@ -1821,9 +1825,8 @@ const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadRe
 // view, so it works no matter which view currently holds those reparented
 // elements (see applyLayoutDom).
 setInterval(() => {
-  if (!$('#view-log').classList.contains('hidden') || !$('#view-home').classList.contains('hidden')) {
-    loadRecent({ background: true }).catch(() => {})
-  }
+  if (!$('#view-log').classList.contains('hidden')) loadRecent({ background: true }).catch(() => {})
+  else if (!$('#view-home').classList.contains('hidden')) loadHome({ background: true }).catch(() => {})
 }, 60000)
 
 // Coming back to a backgrounded tab is when the data is most likely stale and
@@ -1835,16 +1838,24 @@ function backgroundRefresh() {
   if (!$('#sheet-backdrop').classList.contains('hidden')) return // don't yank a form out from under an edit
   if (Date.now() - lastRefreshAt < 5000) return
   lastRefreshAt = Date.now()
-  const active = document.querySelector('.nav-btn.active')?.dataset.view
-  if (!active) return // still on the login screen
-  if (active === 'log' || active === 'home') loadRecent({ background: true }).catch(() => {})
-  else views[active]()
+  if (!activeView) return // still on the login screen
+  if (activeView === 'log') loadRecent({ background: true }).catch(() => {})
+  else if (activeView === 'home') loadHome({ background: true }).catch(() => {})
+  else views[activeView]()
 }
 document.addEventListener('visibilitychange', backgroundRefresh)
 window.addEventListener('focus', backgroundRefresh)
 
+// The current view is tracked here rather than read back off .nav-btn.active:
+// some views (reports/sleep in the new layout) have no button in the visible
+// nav, where the Home button is highlighted as a stand-in.
+let activeView = null
+
 function switchView(name) {
+  activeView = name
   document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name))
+  const nav = document.querySelector(currentLayout() === 'classic' ? '#nav-classic' : '#nav-new')
+  if (!nav.querySelector('.nav-btn.active')) nav.querySelector('[data-view="home"]')?.classList.add('active')
   document.querySelectorAll('.view').forEach((v) => v.classList.add('hidden'))
   $(`#view-${name}`).classList.remove('hidden')
   views[name]()
@@ -1853,8 +1864,7 @@ function switchView(name) {
 function refreshAll() {
   autoMilestones = null // new logs can cross a fun-milestone threshold
   lastRefreshAt = Date.now()
-  const active = document.querySelector('.nav-btn.active').dataset.view
-  views[active]()
+  views[activeView]()
 }
 
 // ---------- layout: new (Home-first) vs classic (Log-first) ----------
@@ -1924,10 +1934,17 @@ function homeAgeText() {
   const weeks = Math.floor(totalDays / 7)
   if (weeks < 12) return `${weeks} week${weeks === 1 ? '' : 's'} old`
   let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth())
-  let anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate())
+  // Clamp to month-end so a birth on the 29th-31st doesn't overflow into the
+  // next month in shorter months (same clamp as ageMarkers).
+  const anchorFor = (m) => {
+    const a = new Date(birth.getFullYear(), birth.getMonth() + m, birth.getDate())
+    if (a.getDate() !== birth.getDate()) a.setDate(0)
+    return a
+  }
+  let anchor = anchorFor(months)
   if (anchor > now) {
     months--
-    anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate())
+    anchor = anchorFor(months)
   }
   const days = Math.floor((now - anchor) / 86400000)
   return `${months} month${months === 1 ? '' : 's'}, ${days} day${days === 1 ? '' : 's'} old`
@@ -1962,10 +1979,10 @@ function renderHomeCards(latestWeight, weightPct) {
   el.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => switchView(b.dataset.nav)))
 }
 
-async function loadHome() {
+async function loadHome({ background = false } = {}) {
   renderHomeAge()
   applyHomeLogDisclosure()
-  loadRecent()
+  loadRecent({ background }).catch(() => {})
   const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' && cfg.babySex ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
   try {
     const { weights } = await api('/api/reports/growth')
