@@ -5,6 +5,12 @@ import path from 'node:path'
 export const DATA_DIR = process.env.DATA_DIR || path.resolve('data')
 export const PHOTOS_DIR = path.join(DATA_DIR, 'photos')
 fs.mkdirSync(PHOTOS_DIR, { recursive: true })
+// Generated thumbnails for the Photos gallery, cached to disk on first
+// request (see GET /photos/thumb/:name in server/index.js). Nested inside
+// PHOTOS_DIR is deliberate: it's disposable, and it means one volume, one
+// backup path.
+export const THUMBS_DIR = path.join(PHOTOS_DIR, 'thumbs')
+fs.mkdirSync(THUMBS_DIR, { recursive: true })
 
 export const db = new Database(path.join(DATA_DIR, 'baby.db'))
 db.pragma('journal_mode = WAL')

@@ -624,14 +624,23 @@ function entryEl(e) {
   return div
 }
 
-// Fullscreen photo viewer: tap a timeline photo to open, tap anywhere to close.
-function openLightbox(src) {
+// Fullscreen photo viewer: tap a timeline or gallery photo to open, tap
+// anywhere to close. caption is optional (the Photos gallery passes the
+// event's notes; the timeline already shows notes inline above the thumbnail
+// so it doesn't need one here).
+function openLightbox(src, caption) {
   const overlay = document.createElement('div')
   overlay.className = 'lightbox'
   const img = document.createElement('img')
   img.src = src
   img.alt = ''
   overlay.appendChild(img)
+  if (caption) {
+    const cap = document.createElement('div')
+    cap.className = 'lightbox-caption'
+    cap.textContent = caption
+    overlay.appendChild(cap)
+  }
   overlay.onclick = () => overlay.remove()
   document.body.appendChild(overlay)
 }
@@ -758,6 +767,140 @@ async function loadTimeline({ append = false } = {}) {
 }
 
 $('#load-more').onclick = () => loadTimeline({ append: true })
+
+// ---------- photos gallery ----------
+//
+// Photo-type events only (photos attached to diapers/other events are mostly
+// diaper-analysis shots and are excluded - the server-side ?type=photo filter
+// does that). Grouped by "baby month" (birth to the day before the next
+// month-iversary, clamped to month-end for a birth on the 29th-31st), with a
+// pinned strip of the shots that landed exactly on a month-iversary day.
+// Falls back to calendar-month grouping when no birth date is configured.
+
+const PHOTO_PAGE_SIZE = 200
+let photosOldest = null
+let photosLoaded = [] // accumulated pages, newest first
+
+// n=0 is birth itself; n>=1 is the n-th month-iversary, clamped to the last
+// day of the target month when the birth day doesn't exist there (e.g. a
+// birth on the 31st in a 30-day month) - same clamp ageMarkers() uses.
+function monthAnniversary(birth, n) {
+  if (n <= 0) return new Date(birth.getFullYear(), birth.getMonth(), birth.getDate(), 12)
+  const d = new Date(birth.getFullYear(), birth.getMonth() + n, birth.getDate(), 12)
+  if (d.getDate() !== birth.getDate()) d.setDate(0)
+  return d
+}
+
+// Which baby-month bucket a timestamp falls in: -1 for anything before birth
+// (a single bucket, however far back), otherwise the n with
+// monthAnniversary(n) <= d < monthAnniversary(n+1) - "Month n+1" in the UI.
+function monthIndexOf(iso, birth) {
+  const d = new Date(iso)
+  if (d < monthAnniversary(birth, 0)) return -1
+  let n = (d.getFullYear() - birth.getFullYear()) * 12 + (d.getMonth() - birth.getMonth())
+  if (n < 0) n = 0
+  while (monthAnniversary(birth, n) > d) n--
+  while (monthAnniversary(birth, n + 1) <= d) n++
+  return n
+}
+
+// True when a timestamp lands exactly on a month-iversary day (month 1+,
+// never the birth day itself).
+function isMonthlyBirthday(iso, birth) {
+  const n = monthIndexOf(iso, birth)
+  if (n < 1) return false
+  const d = new Date(iso)
+  const anniv = monthAnniversary(birth, n)
+  return d.getFullYear() === anniv.getFullYear() && d.getMonth() === anniv.getMonth() && d.getDate() === anniv.getDate()
+}
+
+const monthDayFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const monthYearFmt = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
+
+function monthGroupLabel(n, birth) {
+  if (n < 0) return { label: 'Before birth', sub: `through ${monthDayFmt.format(monthAnniversary(birth, 0))}` }
+  const start = monthAnniversary(birth, n)
+  const end = new Date(monthAnniversary(birth, n + 1).getTime() - 86400000)
+  return { label: `Month ${n + 1}`, sub: `${monthDayFmt.format(start)} - ${monthDayFmt.format(end)}` }
+}
+
+function calendarGroupLabel(key) {
+  const [y, m] = key.split('-').map(Number)
+  return { label: monthYearFmt.format(new Date(y, m - 1, 1, 12)), sub: '' }
+}
+
+function photoTile(e, badge) {
+  return `<button type="button" class="photo-tile" data-id="${e.id}">
+    <img loading="lazy" src="/photos/thumb/${escapeHtml(e.photo_path)}" alt="">
+    ${badge ? '<span class="photo-badge" title="Monthly birthday">🎂</span>' : ''}
+  </button>`
+}
+
+function groupPhotos(events, birth) {
+  const groups = []
+  let lastKey = null
+  for (const e of events) {
+    const key = birth ? monthIndexOf(e.occurred_at, birth) : dayKey(e.occurred_at).slice(0, 7)
+    if (key !== lastKey) {
+      groups.push({ key, items: [] })
+      lastKey = key
+    }
+    groups[groups.length - 1].items.push(e)
+  }
+  return groups
+}
+
+function renderPhotos(events) {
+  const el = $('#photos')
+  if (!events.length) {
+    el.innerHTML = '<div class="day-header">No photos yet - snap the first one! 📷</div>'
+    $('#photos-load-more').classList.add('hidden')
+    return
+  }
+  const birth = cfg?.birthDate ? new Date(`${cfg.birthDate}T12:00:00`) : null
+  const monthly = birth ? events.filter((e) => isMonthlyBirthday(e.occurred_at, birth)) : []
+
+  let html = ''
+  if (monthly.length) {
+    html += `<div class="photos-pinned">
+      <h3>🎂 Monthly shots</h3>
+      <div class="photos-strip">${monthly.map((e) => photoTile(e, true)).join('')}</div>
+    </div>`
+  }
+
+  const groups = groupPhotos(events, birth)
+  html += groups
+    .map((g) => {
+      const { label, sub } = birth ? monthGroupLabel(g.key, birth) : calendarGroupLabel(g.key)
+      return `<div class="photos-month">
+        <div class="photos-month-header"><span class="photos-month-title">${label}</span>${sub ? `<span class="photos-month-range">${sub}</span>` : ''}</div>
+        <div class="photos-grid">${g.items.map((e) => photoTile(e, birth && isMonthlyBirthday(e.occurred_at, birth))).join('')}</div>
+      </div>`
+    })
+    .join('')
+
+  el.innerHTML = html
+  el.querySelectorAll('.photo-tile').forEach((btn) => {
+    btn.onclick = () => {
+      const e = events.find((ev) => String(ev.id) === btn.dataset.id)
+      if (e) openLightbox(`/photos/${escapeHtml(e.photo_path)}`, e.notes)
+    }
+  })
+}
+
+async function loadPhotos({ append = false } = {}) {
+  const url = append && photosOldest
+    ? `/api/events?limit=${PHOTO_PAGE_SIZE}&type=photo&before=${encodeURIComponent(photosOldest)}`
+    : `/api/events?limit=${PHOTO_PAGE_SIZE}&type=photo`
+  const events = await api(url)
+  if (!append) photosLoaded = []
+  photosLoaded.push(...events)
+  if (events.length) photosOldest = events[events.length - 1].occurred_at
+  $('#photos-load-more').classList.toggle('hidden', events.length < PHOTO_PAGE_SIZE)
+  renderPhotos(photosLoaded)
+}
+
+$('#photos-load-more').onclick = () => loadPhotos({ append: true })
 
 // ---------- recent entries on log screen ----------
 
@@ -1817,7 +1960,7 @@ async function enableNudges() {
 
 // ---------- navigation & boot ----------
 
-const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep, home: loadHome, growth: loadGrowth }
+const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep, home: loadHome, growth: loadGrowth, photos: () => loadPhotos() }
 
 // The app often sits open on the log/home screen for hours - keep the stamps
 // AND the Recent list from going stale. loadRecent() refreshes the stamps
