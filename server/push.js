@@ -77,6 +77,8 @@ function formatLocalTime(iso) {
 }
 
 export async function checkNudge(now = new Date()) {
+  if (NUDGE_HOURS <= 0) return // disabled - see startNudgeTimer
+
   const last = db
     .prepare(
       `SELECT type, occurred_at FROM events
@@ -100,7 +102,11 @@ export async function checkNudge(now = new Date()) {
   console.log(`nudge sent to ${sent} device(s); last entry ${last.type} at ${last.occurred_at}`)
 }
 
+// The interval always starts so other periodic checks can share this loop;
+// each check gates on its own config, so NUDGE_HOURS<=0 disables just the
+// feed nudge without stopping the timer.
 export function startNudgeTimer() {
   setInterval(() => checkNudge().catch(err => console.error('nudge check failed:', err)), CHECK_INTERVAL_MS)
-  console.log(`nudge timer running: threshold ${NUDGE_HOURS}h, re-nudge every ${RENUDGE_MINUTES}m`)
+  if (NUDGE_HOURS <= 0) console.log('feed nudge disabled (NUDGE_HOURS <= 0)')
+  else console.log(`nudge timer running: threshold ${NUDGE_HOURS}h, re-nudge every ${RENUDGE_MINUTES}m`)
 }

@@ -1327,20 +1327,119 @@ function fillDays(days) {
   return out.slice(-activeRange().days)
 }
 
+// Growth charts + percentile tiles, shared by the top-level Growth view and
+// the Reports > Growth sub-tab. weights/heights/heads are ascending arrays of
+// {occurred_at, weight_g|height_cm|head_cm} - normally the all-time data from
+// /api/reports/growth, so measurements never fall off a windowed report.
+function buildGrowthHtml(weights, heights, heads) {
+  const lastWeight = weights[weights.length - 1]
+  const unit = localStorage.getItem('weightUnit') || 'lb'
+  const fmtW = (g) => (unit === 'kg' ? `${(g / 1000).toFixed(2)} kg` : `${(g / 453.592).toFixed(2)} lb`)
+  const lastHeight = heights[heights.length - 1]
+  const hUnit = localStorage.getItem('heightUnit') || 'in'
+  const fmtH = (cm) => (hUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
+  const lastHead = heads[heads.length - 1]
+  const cUnit = localStorage.getItem('headUnit') || 'cm'
+  const fmtC = (cm) => (cUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
+  let growthHtml = ''
+
+  const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
+  if (cfg.birthDate && GROWTH_LMS && (weights.length || heights.length || heads.length)) {
+    const birth = new Date(`${cfg.birthDate}T12:00:00`)
+    const ageMo = (iso) => Math.max(0, (new Date(iso) - birth) / (86400000 * 30.4375))
+    const wg = weights.map((w) => ({ iso: w.occurred_at, value: w.weight_g / 1000, ageMo: ageMo(w.occurred_at) }))
+    const hg = heights.map((h) => ({ iso: h.occurred_at, value: h.height_cm, ageMo: ageMo(h.occurred_at) }))
+    const cg = heads.map((h) => ({ iso: h.occurred_at, value: h.head_cm, ageMo: ageMo(h.occurred_at) }))
+    const lastW = wg[wg.length - 1]
+    const lastH = hg[hg.length - 1]
+    const lastC = cg[cg.length - 1]
+
+    growthHtml += `<div class="tiles">
+      ${lastW ? `<div class="tile"><div class="tile-label">⚖️ Weight percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.weight, lastW.ageMo, lastW.value))}</div><div class="tile-sub">${fmtWeight(lastW.value * 1000)}</div></div>` : ''}
+      ${lastH ? `<div class="tile"><div class="tile-label">📏 Height percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.length, lastH.ageMo, lastH.value))}</div><div class="tile-sub">${fmtHeight(lastH.value)}</div></div>` : ''}
+      ${lastC ? `<div class="tile"><div class="tile-label">🧠 Head percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.head, lastC.ageMo, lastC.value))}</div><div class="tile-sub">${fmtHead(lastC.value)}</div></div>` : ''}
+    </div>`
+
+    const curveLabel = `on WHO ${cfg.babySex}s' growth standards (3rd-97th percentile) - tap a dot for the exact percentile`
+    if (wg.length) {
+      growthHtml += chartCard('Weight', curveLabel, [],
+        growthChart(wg, GROWTH_LMS.weight, 'var(--c-weight)', (kg) => fmtW(kg * 1000)))
+    }
+    if (hg.length) {
+      growthHtml += chartCard('Height', curveLabel, [],
+        growthChart(hg, GROWTH_LMS.length, 'var(--c-breastfeed)', (cm) => fmtH(cm)))
+    }
+    if (cg.length) {
+      growthHtml += chartCard('Head circumference', curveLabel, [],
+        growthChart(cg, GROWTH_LMS.head, 'var(--c-feed)', (cm) => fmtC(cm)))
+    }
+    if (wg.length >= 2 || hg.length >= 2 || cg.length >= 2) {
+      const series = []
+      if (wg.length >= 2) series.push({ label: 'Weight', color: 'var(--c-weight)', points: wg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.weight, p.ageMo, p.value) })) })
+      if (hg.length >= 2) series.push({ label: 'Height', color: 'var(--c-breastfeed)', points: hg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.length, p.ageMo, p.value) })) })
+      if (cg.length >= 2) series.push({ label: 'Head', color: 'var(--c-feed)', points: cg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.head, p.ageMo, p.value) })) })
+      growthHtml += `<div class="chart-card"><h3>Percentile history</h3><div class="chart-sub">tracking against the curves over time</div>
+        <div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
+        ${pctChart(series)}</div>`
+    }
+  } else {
+    // No birth date configured: plain measurement charts.
+    if (weights.length >= 2) {
+      growthHtml += chartCard('Weight', lastWeight ? `latest: ${fmtWeight(lastWeight.weight_g)}` : '', [],
+        lineChart(weights.map((w) => ({ occurred_at: w.occurred_at, value: w.weight_g })), 'var(--c-weight)', (g) => fmtW(g)))
+    } else if (lastWeight) {
+      growthHtml += `<div class="chart-card"><h3>Weight</h3><div class="chart-sub">latest: ${fmtWeight(lastWeight.weight_g)} - the curve appears after a second measurement</div></div>`
+    }
+    if (heights.length >= 2) {
+      growthHtml += chartCard('Height', lastHeight ? `latest: ${fmtHeight(lastHeight.height_cm)}` : '', [],
+        lineChart(heights.map((h) => ({ occurred_at: h.occurred_at, value: h.height_cm })), 'var(--c-breastfeed)', (cm) => fmtH(cm)))
+    } else if (lastHeight) {
+      growthHtml += `<div class="chart-card"><h3>Height</h3><div class="chart-sub">latest: ${fmtHeight(lastHeight.height_cm)} - the curve appears after a second measurement</div></div>`
+    }
+    if (heads.length >= 2) {
+      growthHtml += chartCard('Head circumference', lastHead ? `latest: ${fmtHead(lastHead.head_cm)}` : '', [],
+        lineChart(heads.map((h) => ({ occurred_at: h.occurred_at, value: h.head_cm })), 'var(--c-feed)', (cm) => fmtC(cm)))
+    } else if (lastHead) {
+      growthHtml += `<div class="chart-card"><h3>Head circumference</h3><div class="chart-sub">latest: ${fmtHead(lastHead.head_cm)} - the curve appears after a second measurement</div></div>`
+    }
+  }
+  if (!growthHtml) growthHtml = '<div class="chart-card"><h3>Growth</h3><div class="chart-sub">no measurements yet</div></div>'
+  return growthHtml
+}
+
+// Fetches all-time weight/height/head measurements (never windowed, unlike
+// /api/reports/daily) and renders them into the given container via
+// buildGrowthHtml. Shared by the top-level Growth view and the Reports tab.
+async function loadGrowthInto(el) {
+  try {
+    const { weights, heights, heads = [] } = await api('/api/reports/growth')
+    el.innerHTML = buildGrowthHtml(weights, heights, heads)
+  } catch (err) {
+    el.innerHTML = `<div class="chart-card"><h3>Growth</h3><div class="chart-sub">${escapeHtml(err.message)}</div></div>`
+  }
+  el.querySelectorAll('.chart-svg').forEach((svg) => chartTip(svg))
+}
+
+async function loadGrowth() {
+  await loadGrowthInto($('#growth'))
+}
+
 async function loadReports() {
   const { days: rawDays, weights, heights, heads = [], latestWeight = null } = await api(`/api/reports/daily?days=${REPORT_DAYS}`)
+  // Growth tiles/charts are all-time (never windowed like the rest of this
+  // report), so old measurements never silently drop off.
+  const growthData = await api('/api/reports/growth').catch(() => ({ weights: [], heights: [], heads: [] }))
   const el = $('#reports')
-  if (!rawDays.length && !weights.length && !heights.length && !heads.length) {
+  if (!rawDays.length && !weights.length && !heights.length && !heads.length &&
+      !growthData.weights.length && !growthData.heights.length && !(growthData.heads || []).length) {
     el.innerHTML = '<div class="day-header">No data yet — reports appear once you start logging.</div>'
     return
   }
   const days = fillDays(rawDays)
   const todayKey = dayKey(new Date().toISOString())
   const today = days.find((d) => d.date === todayKey) || { breastfeedCount: 0, breastfeedMin: 0, formulaMl: 0, formulaCount: 0, breastmilkMl: 0, breastmilkCount: 0, pumpCount: 0, pumpedMl: 0, pee: 0, poop: 0 }
-  const lastWeight = weights[weights.length - 1]
 
-  const unit = localStorage.getItem('weightUnit') || 'lb'
-  const fmtW = (g) => (unit === 'kg' ? `${(g / 1000).toFixed(2)} kg` : `${(g / 453.592).toFixed(2)} lb`)
+  const growthHtml = buildGrowthHtml(growthData.weights, growthData.heights, growthData.heads || [])
 
   // Estimates are sparse - a day only produces one when a qualifying pump or
   // isolated bottle happened - so the tile shows the most recent one and dates it.
@@ -1468,76 +1567,6 @@ async function loadReports() {
 
   const diapersHtml = chartCard('Diapers per day', 'pee and poop counts', ['pee', 'poop'],
     barChart(days, ['pee', 'poop'], (d, k) => d[k], (v) => `${v}`))
-
-  const lastHeight = heights[heights.length - 1]
-  const hUnit = localStorage.getItem('heightUnit') || 'in'
-  const fmtH = (cm) => (hUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
-  const lastHead = heads[heads.length - 1]
-  const cUnit = localStorage.getItem('headUnit') || 'cm'
-  const fmtC = (cm) => (cUnit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm / 2.54).toFixed(1)} in`)
-  let growthHtml = ''
-
-  const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
-  if (cfg.birthDate && GROWTH_LMS && (weights.length || heights.length || heads.length)) {
-    const birth = new Date(`${cfg.birthDate}T12:00:00`)
-    const ageMo = (iso) => Math.max(0, (new Date(iso) - birth) / (86400000 * 30.4375))
-    const wg = weights.map((w) => ({ iso: w.occurred_at, value: w.weight_g / 1000, ageMo: ageMo(w.occurred_at) }))
-    const hg = heights.map((h) => ({ iso: h.occurred_at, value: h.height_cm, ageMo: ageMo(h.occurred_at) }))
-    const cg = heads.map((h) => ({ iso: h.occurred_at, value: h.head_cm, ageMo: ageMo(h.occurred_at) }))
-    const lastW = wg[wg.length - 1]
-    const lastH = hg[hg.length - 1]
-    const lastC = cg[cg.length - 1]
-
-    growthHtml += `<div class="tiles">
-      ${lastW ? `<div class="tile"><div class="tile-label">⚖️ Weight percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.weight, lastW.ageMo, lastW.value))}</div><div class="tile-sub">${fmtWeight(lastW.value * 1000)}</div></div>` : ''}
-      ${lastH ? `<div class="tile"><div class="tile-label">📏 Height percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.length, lastH.ageMo, lastH.value))}</div><div class="tile-sub">${fmtHeight(lastH.value)}</div></div>` : ''}
-      ${lastC ? `<div class="tile"><div class="tile-label">🧠 Head percentile</div><div class="tile-value">${fmtPercentile(percentileFor(GROWTH_LMS.head, lastC.ageMo, lastC.value))}</div><div class="tile-sub">${fmtHead(lastC.value)}</div></div>` : ''}
-    </div>`
-
-    const curveLabel = `on WHO ${cfg.babySex}s’ growth standards (3rd–97th percentile) — tap a dot for the exact percentile`
-    if (wg.length) {
-      growthHtml += chartCard('Weight', curveLabel, [],
-        growthChart(wg, GROWTH_LMS.weight, 'var(--c-weight)', (kg) => fmtW(kg * 1000)))
-    }
-    if (hg.length) {
-      growthHtml += chartCard('Height', curveLabel, [],
-        growthChart(hg, GROWTH_LMS.length, 'var(--c-breastfeed)', (cm) => fmtH(cm)))
-    }
-    if (cg.length) {
-      growthHtml += chartCard('Head circumference', curveLabel, [],
-        growthChart(cg, GROWTH_LMS.head, 'var(--c-feed)', (cm) => fmtC(cm)))
-    }
-    if (wg.length >= 2 || hg.length >= 2 || cg.length >= 2) {
-      const series = []
-      if (wg.length >= 2) series.push({ label: 'Weight', color: 'var(--c-weight)', points: wg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.weight, p.ageMo, p.value) })) })
-      if (hg.length >= 2) series.push({ label: 'Height', color: 'var(--c-breastfeed)', points: hg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.length, p.ageMo, p.value) })) })
-      if (cg.length >= 2) series.push({ label: 'Head', color: 'var(--c-feed)', points: cg.map((p) => ({ iso: p.iso, value: percentileFor(GROWTH_LMS.head, p.ageMo, p.value) })) })
-      growthHtml += `<div class="chart-card"><h3>Percentile history</h3><div class="chart-sub">tracking against the curves over time</div>
-        <div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
-        ${pctChart(series)}</div>`
-    }
-  } else {
-    // No birth date configured: plain measurement charts.
-    if (weights.length >= 2) {
-      growthHtml += chartCard('Weight', lastWeight ? `latest: ${fmtWeight(lastWeight.weight_g)}` : '', [],
-        lineChart(weights.map((w) => ({ occurred_at: w.occurred_at, value: w.weight_g })), 'var(--c-weight)', (g) => fmtW(g)))
-    } else if (lastWeight) {
-      growthHtml += `<div class="chart-card"><h3>Weight</h3><div class="chart-sub">latest: ${fmtWeight(lastWeight.weight_g)} — the curve appears after a second measurement</div></div>`
-    }
-    if (heights.length >= 2) {
-      growthHtml += chartCard('Height', lastHeight ? `latest: ${fmtHeight(lastHeight.height_cm)}` : '', [],
-        lineChart(heights.map((h) => ({ occurred_at: h.occurred_at, value: h.height_cm })), 'var(--c-breastfeed)', (cm) => fmtH(cm)))
-    } else if (lastHeight) {
-      growthHtml += `<div class="chart-card"><h3>Height</h3><div class="chart-sub">latest: ${fmtHeight(lastHeight.height_cm)} — the curve appears after a second measurement</div></div>`
-    }
-    if (heads.length >= 2) {
-      growthHtml += chartCard('Head circumference', lastHead ? `latest: ${fmtHead(lastHead.head_cm)}` : '', [],
-        lineChart(heads.map((h) => ({ occurred_at: h.occurred_at, value: h.head_cm })), 'var(--c-feed)', (cm) => fmtC(cm)))
-    } else if (lastHead) {
-      growthHtml += `<div class="chart-card"><h3>Head circumference</h3><div class="chart-sub">latest: ${fmtHead(lastHead.head_cm)} — the curve appears after a second measurement</div></div>`
-    }
-  }
-  if (!growthHtml) growthHtml = '<div class="chart-card"><h3>Growth</h3><div class="chart-sub">no measurements yet</div></div>'
 
   const historyHtml = `<div class="report-table-wrap"><table class="report-table">
     <tr><th>Day</th><th>🤱</th><th>🍼 mL</th><th>💧</th><th>💩</th></tr>
@@ -1784,12 +1813,17 @@ async function enableNudges() {
 
 // ---------- navigation & boot ----------
 
-const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep }
+const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep, home: loadHome, growth: loadGrowth }
 
-// The app often sits open on the log screen for hours — keep the stamps AND
-// the Recent list from going stale. loadRecent() refreshes the stamps too.
+// The app often sits open on the log/home screen for hours - keep the stamps
+// AND the Recent list from going stale. loadRecent() refreshes the stamps
+// too, and it targets #last-entries/.log-btn by id/class rather than by
+// view, so it works no matter which view currently holds those reparented
+// elements (see applyLayoutDom).
 setInterval(() => {
-  if (!$('#view-log').classList.contains('hidden')) loadRecent({ background: true }).catch(() => {})
+  if (!$('#view-log').classList.contains('hidden') || !$('#view-home').classList.contains('hidden')) {
+    loadRecent({ background: true }).catch(() => {})
+  }
 }, 60000)
 
 // Coming back to a backgrounded tab is when the data is most likely stale and
@@ -1803,7 +1837,7 @@ function backgroundRefresh() {
   lastRefreshAt = Date.now()
   const active = document.querySelector('.nav-btn.active')?.dataset.view
   if (!active) return // still on the login screen
-  if (active === 'log') loadRecent({ background: true }).catch(() => {})
+  if (active === 'log' || active === 'home') loadRecent({ background: true }).catch(() => {})
   else views[active]()
 }
 document.addEventListener('visibilitychange', backgroundRefresh)
@@ -1821,6 +1855,131 @@ function refreshAll() {
   lastRefreshAt = Date.now()
   const active = document.querySelector('.nav-btn.active').dataset.view
   views[active]()
+}
+
+// ---------- layout: new (Home-first) vs classic (Log-first) ----------
+
+function currentLayout() {
+  return localStorage.getItem('layout') === 'classic' ? 'classic' : 'new'
+}
+
+function setLayout(layout) {
+  localStorage.setItem('layout', layout)
+  // A reload is simpler and more robust than reconciling reparented DOM
+  // nodes and nav state in place, and the toggle is a rare action.
+  location.reload()
+}
+
+// The quick-log grid and the Recent list are single DOM nodes shared between
+// the classic Log view and the new-layout Home view - moved rather than
+// duplicated, so there is exactly one copy of the log buttons in the app.
+function applyLayoutDom(layout) {
+  const grid = document.querySelector('.log-grid')
+  const recent = $('#last-entries')
+  const logView = $('#view-log')
+  const gridMount = $('#home-log-grid-mount')
+  const recentMount = $('#home-recent-mount')
+  if (layout === 'classic') {
+    if (grid) logView.insertBefore(grid, logView.firstChild)
+    if (recent) logView.insertBefore(recent, logView.querySelector('.layout-toggle'))
+  } else {
+    if (grid) gridMount.appendChild(grid)
+    if (recent) recentMount.appendChild(recent)
+  }
+}
+
+function homeLogOpen() {
+  return localStorage.getItem('homeLogOpen') === '1'
+}
+
+function applyHomeLogDisclosure() {
+  const open = homeLogOpen()
+  $('#home-log-grid-mount').classList.toggle('hidden', !open)
+  $('#home-log-toggle').setAttribute('aria-expanded', String(open))
+}
+
+$('#home-log-toggle').onclick = () => {
+  localStorage.setItem('homeLogOpen', homeLogOpen() ? '0' : '1')
+  applyHomeLogDisclosure()
+}
+
+$('#home-layout-toggle').onclick = (e) => {
+  e.preventDefault()
+  setLayout('classic')
+}
+$('#log-layout-toggle').onclick = (e) => {
+  e.preventDefault()
+  setLayout('new')
+}
+
+// "X weeks old" up to ~12 weeks, then "X months, Y days old" - computed
+// client-side from the configured birth date so it's never stored or stale.
+function homeAgeText() {
+  if (!cfg?.birthDate) return null
+  const birth = new Date(`${cfg.birthDate}T12:00:00`)
+  if (Number.isNaN(birth.getTime())) return null
+  const now = new Date()
+  const totalDays = Math.floor((now - birth) / 86400000)
+  if (totalDays < 0) return null
+  const weeks = Math.floor(totalDays / 7)
+  if (weeks < 12) return `${weeks} week${weeks === 1 ? '' : 's'} old`
+  let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth())
+  let anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate())
+  if (anchor > now) {
+    months--
+    anchor = new Date(birth.getFullYear(), birth.getMonth() + months, birth.getDate())
+  }
+  const days = Math.floor((now - anchor) / 86400000)
+  return `${months} month${months === 1 ? '' : 's'}, ${days} day${days === 1 ? '' : 's'} old`
+}
+
+function renderHomeAge() {
+  const el = $('#home-age')
+  const text = homeAgeText()
+  el.textContent = text || ''
+  el.classList.toggle('hidden', !text)
+}
+
+// Pillar cards: only built for what exists today (weight/growth, reports,
+// sleep) - no placeholders for features that don't exist yet.
+function renderHomeCards(latestWeight, weightPct) {
+  const cards = []
+  if (latestWeight) {
+    cards.push(`<button type="button" class="home-card" data-nav="growth">
+      <div class="home-card-label">⚖️ Latest weight</div>
+      <div class="home-card-value">${fmtWeight(latestWeight.weight_g)}</div>
+      ${weightPct != null ? `<div class="home-card-sub">${fmtPercentile(weightPct)} percentile</div>` : ''}
+    </button>`)
+  }
+  cards.push(`<button type="button" class="home-card" data-nav="reports">
+    <div class="home-card-label">📊 Reports</div>
+  </button>`)
+  cards.push(`<button type="button" class="home-card" data-nav="sleep">
+    <div class="home-card-label">😴 Sleep</div>
+  </button>`)
+  const el = $('#home-cards')
+  el.innerHTML = cards.join('')
+  el.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => switchView(b.dataset.nav)))
+}
+
+async function loadHome() {
+  renderHomeAge()
+  applyHomeLogDisclosure()
+  loadRecent()
+  const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' && cfg.babySex ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
+  try {
+    const { weights } = await api('/api/reports/growth')
+    const lastW = weights[weights.length - 1]
+    let pct = null
+    if (lastW && cfg.birthDate && GROWTH_LMS) {
+      const birth = new Date(`${cfg.birthDate}T12:00:00`)
+      const ageMo = Math.max(0, (new Date(lastW.occurred_at) - birth) / (86400000 * 30.4375))
+      pct = percentileFor(GROWTH_LMS.weight, ageMo, lastW.weight_g / 1000)
+    }
+    renderHomeCards(lastW || null, pct)
+  } catch {
+    renderHomeCards(null, null)
+  }
 }
 
 // Theme toggle: overrides the system appearance and persists per device.
@@ -2003,7 +2162,10 @@ async function boot() {
   if (isIOS && !isStandalone && !localStorage.getItem('iosHintDismissed')) {
     $('#ios-hint').classList.remove('hidden')
   }
-  switchView('log')
+  const layout = currentLayout()
+  document.body.dataset.layout = layout // in sync already via the inline head script; kept authoritative here too
+  applyLayoutDom(layout)
+  switchView(layout === 'classic' ? 'log' : 'home')
 }
 
 boot()

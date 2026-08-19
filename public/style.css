@@ -227,6 +227,79 @@ nav {
 .nav-btn span { font-size: 11px; font-weight: 600; }
 .nav-btn.active { color: var(--accent); }
 
+/* Two nav button sets share the DOM (new layout: Home/Growth/Timeline;
+   classic layout: Log/Timeline/Reports/Sleep) so the localStorage layout
+   toggle can flip which is shown without rebuilding the markup. */
+#nav-classic { display: none; }
+body[data-layout="classic"] #nav-new { display: none; }
+body[data-layout="classic"] #nav-classic { display: flex; }
+
+/* --- home view --- */
+
+.home-age {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 12px;
+}
+.home-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.home-card {
+  flex: 1 1 140px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  padding: 14px;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+.home-card-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.home-card-value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+.home-card-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+.disclosure { margin-bottom: 18px; }
+.disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 5px 2px;
+  margin: 0 0 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.disclosure-toggle .caret {
+  font-size: 10px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+}
+.disclosure-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .disclosure-toggle .caret { transition: none; }
+}
+
+.layout-toggle {
+  margin-top: 22px;
+  text-align: center;
+}
+.layout-toggle a {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* --- log grid --- */
 
 .log-grid {

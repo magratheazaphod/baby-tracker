@@ -840,6 +840,24 @@ function feedEstimates(sinceIso) {
   return { supply, appetite }
 }
 
+// All-time weight/height/head measurements. /api/reports/daily windows to
+// `days` (default 90), which silently drops older growth measurements from
+// the charts - this endpoint exists so growth views never do that.
+app.get('/api/reports/growth', requireAuth, (req, res) => {
+  const rows = db
+    .prepare("SELECT type, occurred_at, weight_g, height_cm, head_cm FROM events WHERE type IN ('weight', 'height', 'head') ORDER BY occurred_at ASC")
+    .all()
+  const weights = []
+  const heights = []
+  const heads = []
+  for (const e of rows) {
+    if (e.type === 'weight') weights.push({ occurred_at: e.occurred_at, weight_g: e.weight_g })
+    else if (e.type === 'height') heights.push({ occurred_at: e.occurred_at, height_cm: e.height_cm })
+    else if (e.type === 'head') heads.push({ occurred_at: e.occurred_at, head_cm: e.head_cm })
+  }
+  res.json({ weights, heights, heads })
+})
+
 app.get('/api/reports/daily', requireAuth, (req, res) => {
   const days = Math.min(Number(req.query.days) || 30, 365)
   const since = new Date(Date.now() - days * 86400 * 1000).toISOString()
