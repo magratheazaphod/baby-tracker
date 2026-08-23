@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, DATA_DIR, PHOTOS_DIR } from './db.js'
+import { db, DATA_DIR, PHOTOS_DIR, THUMBS_DIR } from './db.js'
 import { queueDiaperAnalysis } from './analyze.js'
 import { parseUtterance, outOfBounds, say, langOf, confirmation, duplicateWarning, answer, scriptLang } from './voice.js'
 import { transcribeAudio, transcribeConfigured } from './transcribe.js'
@@ -251,7 +251,8 @@ app.get('/api/events', requireAuth, (req, res) => {
     clauses.push('occurred_at < ?')
     params.push(req.query.before)
   }
-  if (req.query.type && TYPES.includes(req.query.type)) {
+  if (req.query.type) {
+    if (!TYPES.includes(req.query.type)) return res.status(400).json({ error: 'Unknown type' })
     clauses.push('type = ?')
     params.push(req.query.type)
   }
@@ -663,7 +664,11 @@ async function savePhoto(buffer) {
 }
 
 function removePhotoFile(photo_path) {
-  fs.rm(path.join(PHOTOS_DIR, path.basename(photo_path)), { force: true }, () => {})
+  // The cached thumbnail shares the basename; names are never reused, so an
+  // orphaned thumb would sit in every backup forever.
+  const name = path.basename(photo_path)
+  fs.rm(path.join(PHOTOS_DIR, name), { force: true }, () => {})
+  fs.rm(path.join(THUMBS_DIR, name), { force: true }, () => {})
 }
 
 app.post('/api/photos', requireAuth, upload.single('photo'), async (req, res) => {
@@ -721,6 +726,37 @@ app.delete('/api/events/:id/photo', requireAuth, (req, res) => {
     db.prepare('UPDATE events SET photo_path = NULL, analysis = NULL WHERE id = ?').run(existing.id)
   }
   res.json(db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id))
+})
+
+// Thumbnails for the Photos gallery grid. Mounted before the static /photos
+// mount below so this route takes precedence; matches savePhoto's naming
+// scheme exactly, and never generates for a name with no source file (a
+// junk name could otherwise be used to stuff the cache directory).
+const PHOTO_NAME_RE = /^\d+-[0-9a-f]{8}\.jpg$/
+
+app.get('/photos/thumb/:name', requireAuth, async (req, res) => {
+  const name = path.basename(req.params.name)
+  if (!PHOTO_NAME_RE.test(name)) return res.status(400).json({ error: 'Bad photo name' })
+  const thumbPath = path.join(THUMBS_DIR, name)
+  const sourcePath = path.join(PHOTOS_DIR, name)
+  if (fs.existsSync(thumbPath)) return res.sendFile(thumbPath, { maxAge: '365d', immutable: true })
+  if (!fs.existsSync(sourcePath)) return res.status(404).json({ error: 'Not found' })
+  try {
+    // Two requests racing to generate the same thumbnail both resize the same
+    // deterministic source to the same bytes; writing to a per-request temp
+    // name and renaming into place means neither ever serves a torn file, and
+    // it's fine for the loser's rename to just overwrite the winner's.
+    const tmpPath = path.join(THUMBS_DIR, `.tmp-${crypto.randomBytes(4).toString('hex')}-${name}`)
+    await sharp(sourcePath)
+      .resize({ width: 320, height: 320, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 75 })
+      .toFile(tmpPath)
+    fs.renameSync(tmpPath, thumbPath)
+  } catch (err) {
+    console.error('thumbnail generation failed:', err.message)
+    return res.status(500).json({ error: 'Could not generate thumbnail' })
+  }
+  res.sendFile(thumbPath, { maxAge: '365d', immutable: true })
 })
 
 app.use('/photos', requireAuth, express.static(PHOTOS_DIR, { maxAge: '365d', immutable: true }))

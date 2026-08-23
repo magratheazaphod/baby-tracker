@@ -56,6 +56,11 @@
         <p class="layout-toggle"><a href="#" id="home-layout-toggle">Switch to classic layout</a></p>
       </section>
 
+      <section id="view-photos" class="view hidden">
+        <div id="photos"></div>
+        <button id="photos-load-more" class="ghost-btn hidden">Load older photos</button>
+      </section>
+
       <section id="view-growth" class="view hidden">
         <div id="growth"></div>
       </section>
@@ -109,6 +114,7 @@
 
     <nav id="nav-new">
       <button class="nav-btn active" data-view="home">🏠<span>Home</span></button>
+      <button class="nav-btn" data-view="photos">📷<span>Photos</span></button>
       <button class="nav-btn" data-view="growth">📈<span>Growth</span></button>
       <button class="nav-btn" data-view="timeline">📋<span>Timeline</span></button>
     </nav>
