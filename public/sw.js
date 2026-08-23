@@ -37,18 +37,27 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
+      data: { url: data.url || '/' },
     })
   )
 })
 
+// A payload can name where it wants to land (e.g. '/#photos'). An already-open
+// window is focused rather than replaced, and told about the hash by message:
+// navigating a live client to a URL that differs only in its hash would not
+// re-run the app's boot, so it would focus the old view.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
+  const url = event.notification.data?.url || '/'
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) return client.focus()
+        if ('focus' in client) {
+          client.postMessage({ type: 'navigate', url })
+          return client.focus()
+        }
       }
-      return self.clients.openWindow('/')
+      return self.clients.openWindow(url)
     })
   )
 })
