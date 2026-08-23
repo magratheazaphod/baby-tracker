@@ -65,6 +65,10 @@
         <div id="growth"></div>
       </section>
 
+      <section id="view-checklists" class="view hidden">
+        <div id="checklists"></div>
+      </section>
+
       <section id="view-log" class="view hidden">
         <div class="log-grid">
           <!-- No data-log: this one records instead of opening a sheet, and it
@@ -116,6 +120,7 @@
       <button class="nav-btn active" data-view="home">🏠<span>Home</span></button>
       <button class="nav-btn" data-view="photos">📷<span>Photos</span></button>
       <button class="nav-btn" data-view="growth">📈<span>Growth</span></button>
+      <button class="nav-btn" data-view="checklists">✅<span>Checklists</span></button>
       <button class="nav-btn" data-view="timeline">📋<span>Timeline</span></button>
     </nav>
     <nav id="nav-classic">
@@ -137,6 +142,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="/growth-curves.js"></script>
+  <script src="/milestone-checklist.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

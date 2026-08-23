@@ -200,7 +200,16 @@ function validateEvent(type, body) {
     case 'photo':
       return null
     case 'milestone':
-      return typeof body.notes === 'string' && body.notes.trim() ? null : 'Milestone needs a description'
+      if (!(typeof body.notes === 'string' && body.notes.trim())) return 'Milestone needs a description'
+      // kind carries a checklist item id (e.g. 'cdc:2mo-smiles') when a
+      // milestone was checked off the CDC checklist. Free-form milestones
+      // logged from the quick-log button leave it null.
+      if (body.kind != null) {
+        return typeof body.kind === 'string' && body.kind.length <= 64 && /^cdc:[a-z0-9-]+$/.test(body.kind)
+          ? null
+          : 'Milestone kind must look like cdc:2mo-smiles'
+      }
+      return null
   }
 }
 
@@ -213,7 +222,7 @@ const FIELDS_BY_TYPE = {
   height: ['height_cm'],
   head: ['head_cm'],
   photo: [],
-  milestone: [],
+  milestone: ['kind'],
 }
 
 function insertEvent(type, body, user) {
