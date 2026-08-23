@@ -764,6 +764,16 @@ body[data-layout="classic"] #nav-classic { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .tile-group-label .caret { transition: none; }
 }
+/* --- checklists --- */
+
+.ms-progress {
+  margin-left: auto;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ms-add .entry-title { color: var(--muted); font-weight: 600; }
+
 .tile {
   background: var(--surface);
   border: 1px solid var(--hairline);

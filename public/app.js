@@ -231,7 +231,10 @@ function sheetActions(existing) {
 }
 
 // Builds and opens the sheet for a new entry or an edit (existing = event row).
-function openSheet(type, { kind, existing } = {}) {
+// prefill (new milestone entries only) seeds notes/kind from a checklist item
+// without pretending the row already exists - the sheet still posts as a
+// fresh event on save.
+function openSheet(type, { kind, existing, prefill } = {}) {
   const sheet = $('#sheet-form')
   const timeVal = toLocalInput(existing ? existing.occurred_at : new Date())
   const titles = {
@@ -342,8 +345,11 @@ function openSheet(type, { kind, existing } = {}) {
            <img class="photo-preview hidden" id="photo-preview" alt="">`}
       <label>Caption (optional)<input type="text" name="notes" value="${escapeHtml(existing?.notes ?? '')}"></label>`
   } else if (type === 'milestone') {
+    const notesVal = existing?.notes ?? prefill?.notes ?? ''
+    const kindVal = existing?.kind ?? prefill?.kind ?? ''
     fields = `${fieldTime(timeVal)}
-      <label>What happened?<input type="text" name="notes" value="${escapeHtml(existing?.notes ?? '')}" placeholder="Rolled over for the first time" required></label>`
+      <input type="hidden" name="kind" value="${escapeHtml(kindVal)}">
+      <label>What happened?<input type="text" name="notes" value="${escapeHtml(notesVal)}" placeholder="Rolled over for the first time" required></label>`
   }
 
   sheet.innerHTML = fields + sheetActions(existing)
@@ -546,6 +552,7 @@ function openSheet(type, { kind, existing } = {}) {
           localStorage.setItem('lastPumpMl', body.amount_ml)
         }
         if (type === 'diaper') body.kind = fd.get('kind')
+        if (type === 'milestone') body.kind = fd.get('kind') || null
         if (type === 'weight') {
           body.weight_g = fd.get('unit') === 'kg'
             ? Math.round(Number(fd.get('kg')) * 1000)
@@ -1779,6 +1786,157 @@ async function loadReports() {
   el.querySelectorAll('.chart-svg').forEach((svg) => chartTip(svg))
 }
 
+// ---------- checklists ----------
+//
+// MILESTONE_CHECKLIST / MILESTONE_BRACKETS come from /milestone-checklist.js
+// (loaded before this file, see index.html). A checked-off item is a
+// 'milestone' event whose kind is 'cdc:<item.id>' - free-form milestones from
+// the quick-log button leave kind null and never show up here.
+
+const shortDateFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+
+function checklistDataReady() {
+  return typeof MILESTONE_CHECKLIST !== 'undefined' && typeof MILESTONE_BRACKETS !== 'undefined'
+}
+
+// Float months old - same 30.4375-day-month convention as the growth charts.
+function ageInMonths(birthDate, atDate = new Date()) {
+  const birth = new Date(`${birthDate}T12:00:00`)
+  if (Number.isNaN(birth.getTime())) return null
+  return (atDate - birth) / (86400000 * 30.4375)
+}
+
+// The bracket currently "in progress": the latest bracket the baby has
+// reached, or the first bracket if she isn't there yet (or age is unknown).
+function currentMilestoneBracket(ageMo) {
+  if (ageMo == null) return MILESTONE_BRACKETS[0]
+  let current = MILESTONE_BRACKETS[0]
+  for (const b of MILESTONE_BRACKETS) if (ageMo >= b) current = b
+  return current
+}
+
+// Brackets expanded by default: everything reached so far, plus the next
+// upcoming one ("what's coming"). Unknown age (no birth date) just opens the
+// first bracket.
+function expandedMilestoneBrackets(ageMo) {
+  const set = new Set()
+  if (ageMo == null) {
+    set.add(MILESTONE_BRACKETS[0])
+    return set
+  }
+  let addedNext = false
+  for (const b of MILESTONE_BRACKETS) {
+    if (b <= ageMo) set.add(b)
+    else if (!addedNext) {
+      set.add(b)
+      addedNext = true
+    }
+  }
+  return set
+}
+
+// Map of 'cdc:<id>' -> the event that checked it off.
+async function fetchMilestoneKinds() {
+  const rows = await api('/api/events?type=milestone&limit=500')
+  const map = new Map()
+  rows.forEach((e) => { if (e.kind) map.set(e.kind, e) })
+  return map
+}
+
+function milestoneBracketProgress(bracket, achievedMap) {
+  const items = MILESTONE_CHECKLIST.filter((m) => m.bracket === bracket)
+  const achieved = items.filter((m) => achievedMap.has(`cdc:${m.id}`)).length
+  return { achieved, total: items.length }
+}
+
+function milestoneItemHtml(item, achievedMap) {
+  const ev = achievedMap.get(`cdc:${item.id}`)
+  return `<div class="entry ms-item" data-ms-item="${escapeHtml(item.id)}">
+    <span class="entry-emoji">${ev ? '✅' : '⚪'}</span>
+    <div class="entry-body"><div class="entry-title">${escapeHtml(item.text)}</div></div>
+    ${ev ? `<div class="entry-time">${shortDateFmt.format(new Date(ev.occurred_at))}</div>` : ''}
+  </div>`
+}
+
+function milestoneBracketHtml(bracket, achievedMap, expandSet) {
+  const items = MILESTONE_CHECKLIST.filter((m) => m.bracket === bracket)
+  if (!items.length) return ''
+  const { achieved, total } = milestoneBracketProgress(bracket, achievedMap)
+  const stored = localStorage.getItem(`checklist:group:${bracket}`)
+  const open = stored ? stored === 'open' : expandSet.has(bracket)
+  return `<div class="tile-group">
+    <button class="tile-group-label" data-ms-group="${bracket}" aria-expanded="${open}" aria-controls="msgrp-${bracket}">
+      <span class="caret">▶</span>${bracket} month${bracket === 1 ? '' : 's'}<span class="ms-progress">${achieved} of ${total}</span>
+    </button>
+    <div id="msgrp-${bracket}"${open ? '' : ' hidden'}>
+      ${items.map((item) => milestoneItemHtml(item, achievedMap)).join('')}
+      <div class="entry ms-add" data-ms-add="${bracket}">
+        <span class="entry-emoji">➕</span>
+        <div class="entry-body"><div class="entry-title">Add your own milestone</div></div>
+      </div>
+    </div>
+  </div>`
+}
+
+async function loadChecklists() {
+  const el = $('#checklists')
+  if (!checklistDataReady()) {
+    el.innerHTML = '<div class="day-header">Checklist data isn’t loaded.</div>'
+    return
+  }
+  const achievedMap = await fetchMilestoneKinds().catch(() => new Map())
+  const ageMo = cfg?.birthDate ? ageInMonths(cfg.birthDate) : null
+  const expandSet = expandedMilestoneBrackets(ageMo)
+  const milestonesHtml = MILESTONE_BRACKETS.map((b) => milestoneBracketHtml(b, achievedMap, expandSet)).join('')
+
+  // Sub-tab chrome mirrors Reports: one tab today ("Milestones"), structure
+  // ready for a "Vaccines" sibling in a follow-up PR.
+  const sections = [{ id: 'milestones', label: 'Milestones', html: milestonesHtml }]
+  let active = localStorage.getItem('checklistsTab') || 'milestones'
+  if (!sections.some((s) => s.id === active)) active = 'milestones'
+
+  el.innerHTML =
+    `<div class="subtabs">${sections
+      .map((s) => `<button data-cstab="${s.id}" class="${s.id === active ? 'active' : ''}">${s.label}</button>`)
+      .join('')}</div>` +
+    sections
+      .map((s) => `<div class="csection${s.id === active ? '' : ' hidden'}" id="csec-${s.id}">${s.html}</div>`)
+      .join('')
+
+  el.querySelectorAll('[data-cstab]').forEach((btn) => {
+    btn.onclick = () => {
+      localStorage.setItem('checklistsTab', btn.dataset.cstab)
+      el.querySelectorAll('[data-cstab]').forEach((b) => b.classList.toggle('active', b === btn))
+      el.querySelectorAll('.csection').forEach((sec) => sec.classList.toggle('hidden', sec.id !== `csec-${btn.dataset.cstab}`))
+    }
+  })
+
+  el.querySelectorAll('[data-ms-group]').forEach((btn) => {
+    btn.onclick = () => {
+      const bracket = btn.dataset.msGroup
+      const open = btn.getAttribute('aria-expanded') === 'true'
+      btn.setAttribute('aria-expanded', String(!open))
+      $(`#msgrp-${bracket}`).hidden = open
+      localStorage.setItem(`checklist:group:${bracket}`, open ? 'closed' : 'open')
+    }
+  })
+
+  el.querySelectorAll('[data-ms-item]').forEach((row) => {
+    row.onclick = () => {
+      const id = row.dataset.msItem
+      const item = MILESTONE_CHECKLIST.find((m) => m.id === id)
+      if (!item) return
+      const ev = achievedMap.get(`cdc:${id}`)
+      if (ev) openSheet('milestone', { existing: ev })
+      else openSheet('milestone', { prefill: { notes: item.text, kind: `cdc:${item.id}` } })
+    }
+  })
+
+  el.querySelectorAll('[data-ms-add]').forEach((row) => {
+    row.onclick = () => openSheet('milestone')
+  })
+}
+
 // ---------- sleep cycle ----------
 
 const SLEEP_COLORS = { asleep: 'var(--c-formula)', awake: 'var(--c-pee)' }
@@ -1964,7 +2122,7 @@ async function enableNudges() {
 
 // ---------- navigation & boot ----------
 
-const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep, home: loadHome, growth: loadGrowth, photos: () => loadPhotos() }
+const views = { log: loadRecent, timeline: () => loadTimeline(), reports: loadReports, sleep: loadSleep, home: loadHome, growth: loadGrowth, photos: () => loadPhotos(), checklists: loadChecklists }
 
 // The app often sits open on the log/home screen for hours - keep the stamps
 // AND the Recent list from going stale. loadRecent() refreshes the stamps
@@ -2125,13 +2283,20 @@ function renderHomeAge() {
 
 // Pillar cards: only built for what exists today (weight/growth, reports,
 // sleep) - no placeholders for features that don't exist yet.
-function renderHomeCards(latestWeight, weightPct) {
+function renderHomeCards(latestWeight, weightPct, milestoneProgress) {
   const cards = []
   if (latestWeight) {
     cards.push(`<button type="button" class="home-card" data-nav="growth">
       <div class="home-card-label">⚖️ Latest weight</div>
       <div class="home-card-value">${fmtWeight(latestWeight.weight_g)}</div>
       ${weightPct != null ? `<div class="home-card-sub">${fmtPercentile(weightPct)} percentile</div>` : ''}
+    </button>`)
+  }
+  if (milestoneProgress) {
+    cards.push(`<button type="button" class="home-card" data-nav="checklists">
+      <div class="home-card-label">✅ Next milestones</div>
+      <div class="home-card-value">${milestoneProgress.achieved} of ${milestoneProgress.total}</div>
+      <div class="home-card-sub">${milestoneProgress.bracket} mo</div>
     </button>`)
   }
   cards.push(`<button type="button" class="home-card" data-nav="reports">
@@ -2150,6 +2315,16 @@ async function loadHome({ background = false } = {}) {
   applyHomeLogDisclosure()
   loadRecent({ background }).catch(() => {})
   const GROWTH_LMS = typeof GROWTH_LMS_BY_SEX !== 'undefined' && cfg.babySex ? GROWTH_LMS_BY_SEX[cfg.babySex] : null
+
+  let milestoneProgress = null
+  if (checklistDataReady() && cfg.birthDate) {
+    try {
+      const achievedMap = await fetchMilestoneKinds()
+      const bracket = currentMilestoneBracket(ageInMonths(cfg.birthDate))
+      milestoneProgress = { bracket, ...milestoneBracketProgress(bracket, achievedMap) }
+    } catch { /* card just won't show */ }
+  }
+
   try {
     const { weights } = await api('/api/reports/growth')
     const lastW = weights[weights.length - 1]
@@ -2159,9 +2334,9 @@ async function loadHome({ background = false } = {}) {
       const ageMo = Math.max(0, (new Date(lastW.occurred_at) - birth) / (86400000 * 30.4375))
       pct = percentileFor(GROWTH_LMS.weight, ageMo, lastW.weight_g / 1000)
     }
-    renderHomeCards(lastW || null, pct)
+    renderHomeCards(lastW || null, pct, milestoneProgress)
   } catch {
-    renderHomeCards(null, null)
+    renderHomeCards(null, null, milestoneProgress)
   }
 }
 
