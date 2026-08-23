@@ -785,8 +785,12 @@ let photosLoaded = [] // accumulated pages, newest first
 // day of the target month when the birth day doesn't exist there (e.g. a
 // birth on the 31st in a 30-day month) - same clamp ageMarkers() uses.
 function monthAnniversary(birth, n) {
-  if (n <= 0) return new Date(birth.getFullYear(), birth.getMonth(), birth.getDate(), 12)
-  const d = new Date(birth.getFullYear(), birth.getMonth() + n, birth.getDate(), 12)
+  // Midnight anchors: a bucket boundary at noon would file a 10am photo taken
+  // ON the month-iversary into the previous month (and a birth-morning photo
+  // before the birth). The noon in `birth` itself is only date-rollover
+  // armor and must not leak into these boundaries.
+  if (n <= 0) return new Date(birth.getFullYear(), birth.getMonth(), birth.getDate())
+  const d = new Date(birth.getFullYear(), birth.getMonth() + n, birth.getDate())
   if (d.getDate() !== birth.getDate()) d.setDate(0)
   return d
 }
