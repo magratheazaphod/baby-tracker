@@ -2008,6 +2008,25 @@ function switchView(name) {
   views[name]()
 }
 
+// ---------- deep links from push notifications ----------
+//
+// A push payload can carry a url like '/#photos' (see sw.js). Only views that
+// exist in the current layout are reachable this way: the classic layout has
+// no Photos tab, so a photo nudge tapped there just opens the normal landing
+// view instead of stranding the user in a view its nav cannot leave.
+const HASH_VIEWS = { photos: 'photos' }
+
+function viewForHash(hash) {
+  const view = HASH_VIEWS[String(hash || '').replace(/^.*#/, '')]
+  if (!view) return null
+  return currentLayout() === 'classic' ? null : view
+}
+
+// Drop the hash once it has been acted on, so a later reload lands normally.
+function clearHash() {
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search)
+}
+
 function refreshAll() {
   autoMilestones = null // new logs can cross a fun-milestone threshold
   lastRefreshAt = Date.now()
@@ -2304,7 +2323,16 @@ $('#ios-hint-dismiss').onclick = () => {
 }
 
 async function boot() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js')
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+    // Tapping a notification while the app is already open focuses this window
+    // rather than reloading it, so the target view arrives as a message.
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.type !== 'navigate') return
+      const view = viewForHash(e.data.url)
+      if (view) switchView(view)
+    })
+  }
   cfg = await fetch('/api/config').then((r) => r.json())
   if (cfg.appName) {
     $('#app-title').textContent = cfg.appName
@@ -2329,7 +2357,9 @@ async function boot() {
   const layout = currentLayout()
   document.body.dataset.layout = layout // in sync already via the inline head script; kept authoritative here too
   applyLayoutDom(layout)
-  switchView(layout === 'classic' ? 'log' : 'home')
+  const landing = viewForHash(location.hash) || (layout === 'classic' ? 'log' : 'home')
+  clearHash()
+  switchView(landing)
 }
 
 boot()
