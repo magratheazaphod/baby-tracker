@@ -1,6 +1,6 @@
 # Baby Tracker
 
-A self-hosted newborn-tracking PWA two parents use from iPhones. One Node.js
+A self-hosted baby-tracking PWA two parents use from iPhones. One Node.js
 process (Express + better-sqlite3) serves a no-build vanilla-JS frontend, owns
 SQLite + photos on a Fly.io volume, and runs a push-notification nudge timer.
 No framework, no bundler, no test suite (yet) - verification is manual.
@@ -37,6 +37,30 @@ Production is live and the parents depend on it.
 - Deploying and the backup pipeline: `baby-tracker-ops` skill.
 - Screenshots, demo data, anything published: `baby-tracker-publishing` skill.
 - Agreed next steps: `docs/roadmap.md`.
+
+## Lifecycle phase
+
+The app started newborn-focused: feed/diaper logging plus a feed-nudge timer
+("no entry in N hours → push") for the ≤2-month stretch where those events
+are the whole picture. It has since grown into the older-baby phase - growth
+charts, a CDC milestone checklist, vaccinations, a photo gallery - and the
+newborn-only features now matter less day to day.
+
+That's a real phase transition, not a permanent one: sleep regressions,
+illness, or a future sibling can make the newborn-era features relevant
+again. Favor config toggles over deleting code when a feature's usefulness
+is phase-dependent:
+- The feed nudge is config, not code - `NUDGE_HOURS` (env var / Fly secret)
+  is currently `0` (off) because quick feed/diaper logging isn't the
+  priority right now; set it back (e.g. `6`) to re-enable, no code change
+  needed.
+- The milestone checklist's age brackets are date-driven off `BIRTH_DATE`
+  (`public/milestone-checklist.js`), so it naturally goes from "nothing due
+  yet" to relevant as baby ages, without touching code.
+
+When adding new phase-sensitive behavior, prefer the same pattern: gate on
+config/date rather than hardcoding a newborn-only or older-baby-only
+assumption, so the app can flex as the family's needs change.
 
 ## Architecture map
 
