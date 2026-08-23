@@ -2074,11 +2074,13 @@ function vaccinesHtml(vax, ageMo) {
       </div>`
     )
     .join('')
+  const otherStored = localStorage.getItem('checklist:vaxgroup:other')
+  const otherOpen = otherStored ? otherStored === 'open' : true
   const other = `<div class="tile-group">
-    <button class="tile-group-label" data-vax-group="other" aria-expanded="true" aria-controls="vaxgrp-other">
+    <button class="tile-group-label" data-vax-group="other" aria-expanded="${otherOpen}" aria-controls="vaxgrp-other">
       <span class="caret">▶</span>Other<span class="ms-progress">${vax.other.length}</span>
     </button>
-    <div id="vaxgrp-other">
+    <div id="vaxgrp-other"${otherOpen ? '' : ' hidden'}>
       ${otherRows}
       <div class="entry ms-add" data-vax-add="1">
         <span class="entry-emoji">➕</span>
