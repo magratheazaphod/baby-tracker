@@ -15,6 +15,7 @@
   <script>try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t } catch (e) {}</script>
 </head>
 <body>
+  <script>try { document.body.dataset.layout = localStorage.getItem('layout') === 'classic' ? 'classic' : 'new' } catch (e) {}</script>
   <div id="login" class="login hidden">
     <div class="login-card">
       <div class="login-icon">👶</div>
@@ -42,7 +43,24 @@
     </div>
 
     <main>
-      <section id="view-log" class="view">
+      <section id="view-home" class="view hidden">
+        <div id="home-age" class="home-age hidden"></div>
+        <div id="home-cards" class="home-cards"></div>
+        <div class="disclosure" id="home-log-disclosure">
+          <button type="button" class="disclosure-toggle" id="home-log-toggle" aria-expanded="false" aria-controls="home-log-grid-mount">
+            <span class="caret">▶</span>Log an entry
+          </button>
+          <div id="home-log-grid-mount" class="disclosure-body hidden"></div>
+        </div>
+        <div id="home-recent-mount"></div>
+        <p class="layout-toggle"><a href="#" id="home-layout-toggle">Switch to classic layout</a></p>
+      </section>
+
+      <section id="view-growth" class="view hidden">
+        <div id="growth"></div>
+      </section>
+
+      <section id="view-log" class="view hidden">
         <div class="log-grid">
           <!-- No data-log: this one records instead of opening a sheet, and it
                stays hidden until /api/config says transcription is configured. -->
@@ -60,6 +78,7 @@
           <button class="log-btn span2" data-log="pump"><span class="log-emoji">🫙</span>Pumping</button>
         </div>
         <div id="last-entries" class="last-entries"></div>
+        <p class="layout-toggle"><a href="#" id="log-layout-toggle">Switch to new layout</a></p>
       </section>
 
       <section id="view-timeline" class="view hidden">
@@ -88,7 +107,12 @@
       </section>
     </main>
 
-    <nav>
+    <nav id="nav-new">
+      <button class="nav-btn active" data-view="home">🏠<span>Home</span></button>
+      <button class="nav-btn" data-view="growth">📈<span>Growth</span></button>
+      <button class="nav-btn" data-view="timeline">📋<span>Timeline</span></button>
+    </nav>
+    <nav id="nav-classic">
       <button class="nav-btn active" data-view="log">➕<span>Log</span></button>
       <button class="nav-btn" data-view="timeline">📋<span>Timeline</span></button>
       <button class="nav-btn" data-view="reports">📊<span>Reports</span></button>
