@@ -664,7 +664,11 @@ async function savePhoto(buffer) {
 }
 
 function removePhotoFile(photo_path) {
-  fs.rm(path.join(PHOTOS_DIR, path.basename(photo_path)), { force: true }, () => {})
+  // The cached thumbnail shares the basename; names are never reused, so an
+  // orphaned thumb would sit in every backup forever.
+  const name = path.basename(photo_path)
+  fs.rm(path.join(PHOTOS_DIR, name), { force: true }, () => {})
+  fs.rm(path.join(THUMBS_DIR, name), { force: true }, () => {})
 }
 
 app.post('/api/photos', requireAuth, upload.single('photo'), async (req, res) => {
