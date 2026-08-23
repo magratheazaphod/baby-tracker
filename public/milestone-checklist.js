@@ -8,6 +8,16 @@
 //
 // Wording follows the CDC checklists, lightly trimmed and made
 // gender-neutral. Source: cdc.gov/ncbddd/actearly/milestones
+//
+// The CDC lists deliberately re-ask the same skill at a higher bar in a later
+// bracket, which reads as duplication in a flat list. Two optional fields make
+// that progression explicit instead:
+//   supersedes: id of the earlier item this one raises the bar on. The UI shows
+//     that item's bracket and status underneath, so a repeat reads as "same
+//     skill, higher bar" rather than "didn't I already check this?".
+//   note: one short line naming the delta, where the CDC wording alone doesn't.
+// Checking an item never implies the one it supersedes - each is logged on the
+// day it's observed.
 const MILESTONE_CHECKLIST = [
   // ---- 2 months ----
   { id: '2mo-calms-when-spoken-to', bracket: 2, category: 'social', text: 'Calms down when spoken to or picked up' },
@@ -40,7 +50,7 @@ const MILESTONE_CHECKLIST = [
   // ---- 6 months ----
   { id: '6mo-knows-familiar-people', bracket: 6, category: 'social', text: 'Knows familiar people' },
   { id: '6mo-looks-in-mirror', bracket: 6, category: 'social', text: 'Likes to look at themself in a mirror' },
-  { id: '6mo-laughs', bracket: 6, category: 'social', text: 'Laughs' },
+  { id: '6mo-laughs', bracket: 6, category: 'social', text: 'Laughs', supersedes: '4mo-chuckles' },
   { id: '6mo-takes-turns-with-sounds', bracket: 6, category: 'language', text: 'Takes turns making sounds with you' },
   { id: '6mo-blows-raspberries', bracket: 6, category: 'language', text: 'Blows "raspberries" (sticks tongue out and blows)' },
   { id: '6mo-squeals', bracket: 6, category: 'language', text: 'Makes squealing noises' },
@@ -95,18 +105,18 @@ const MILESTONE_CHECKLIST = [
 
   // ---- 18 months ----
   { id: '18mo-moves-away-but-checks', bracket: 18, category: 'social', text: 'Moves away from you, but looks to make sure you are close by' },
-  { id: '18mo-points-to-show-you', bracket: 18, category: 'social', text: 'Points to show you something interesting' },
+  { id: '18mo-points-to-show-you', bracket: 18, category: 'social', text: 'Points to show you something interesting', supersedes: '15mo-points-to-ask', note: 'Pointing to share, not to ask for something' },
   { id: '18mo-hands-out-to-be-washed', bracket: 18, category: 'social', text: 'Puts hands out for you to wash them' },
   { id: '18mo-looks-at-book-pages', bracket: 18, category: 'social', text: 'Looks at a few pages in a book with you' },
   { id: '18mo-helps-you-dress-them', bracket: 18, category: 'social', text: 'Helps you dress them by pushing an arm through a sleeve or lifting up a foot' },
-  { id: '18mo-tries-three-or-more-words', bracket: 18, category: 'language', text: 'Tries to say three or more words besides "mama" or "dada"' },
+  { id: '18mo-tries-three-or-more-words', bracket: 18, category: 'language', text: 'Tries to say three or more words besides "mama" or "dada"', supersedes: '15mo-tries-one-or-two-words' },
   { id: '18mo-follows-one-step-directions', bracket: 18, category: 'language', text: 'Follows one-step directions without any gestures, like "Give it to me"' },
   { id: '18mo-copies-chores', bracket: 18, category: 'cognitive', text: 'Copies you doing chores, like sweeping with a broom' },
   { id: '18mo-plays-with-toys-simply', bracket: 18, category: 'cognitive', text: 'Plays with toys in a simple way, like pushing a toy car' },
-  { id: '18mo-walks-alone', bracket: 18, category: 'movement', text: 'Walks without holding on to anyone or anything' },
+  { id: '18mo-walks-alone', bracket: 18, category: 'movement', text: 'Walks without holding on to anyone or anything', supersedes: '15mo-takes-a-few-steps', note: 'Walking is how they get around now, not just a few steps' },
   { id: '18mo-scribbles', bracket: 18, category: 'movement', text: 'Scribbles' },
-  { id: '18mo-drinks-from-cup', bracket: 18, category: 'movement', text: 'Drinks from a cup without a lid and may spill sometimes' },
-  { id: '18mo-feeds-self-with-fingers', bracket: 18, category: 'movement', text: 'Feeds themself with fingers' },
+  { id: '18mo-drinks-from-cup', bracket: 18, category: 'movement', text: 'Drinks from a cup without a lid while holding it themself, and may spill sometimes', supersedes: '12mo-drinks-from-open-cup' },
+  { id: '18mo-feeds-self-with-fingers', bracket: 18, category: 'movement', text: 'Feeds themself with fingers', supersedes: '15mo-finger-feeds', note: 'A whole meal this way, not just a few bites' },
   { id: '18mo-tries-to-use-a-spoon', bracket: 18, category: 'movement', text: 'Tries to use a spoon' },
   { id: '18mo-climbs-on-and-off-furniture', bracket: 18, category: 'movement', text: 'Climbs on and off a couch or chair without help' },
 
@@ -123,7 +133,7 @@ const MILESTONE_CHECKLIST = [
   { id: '24mo-kicks-a-ball', bracket: 24, category: 'movement', text: 'Kicks a ball' },
   { id: '24mo-runs', bracket: 24, category: 'movement', text: 'Runs' },
   { id: '24mo-walks-up-stairs', bracket: 24, category: 'movement', text: 'Walks (not climbs) up a few stairs with or without help' },
-  { id: '24mo-eats-with-a-spoon', bracket: 24, category: 'movement', text: 'Eats with a spoon' }
+  { id: '24mo-eats-with-a-spoon', bracket: 24, category: 'movement', text: 'Eats with a spoon', supersedes: '18mo-tries-to-use-a-spoon', note: 'Gets the food to their mouth, not just trying' }
 ]
 
 const MILESTONE_BRACKETS = [2, 4, 6, 9, 12, 15, 18, 24]

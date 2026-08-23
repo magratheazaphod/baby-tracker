@@ -772,6 +772,12 @@ body[data-layout="classic"] #nav-classic { display: flex; }
   text-transform: none;
   letter-spacing: normal;
 }
+.ms-sub {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
 .ms-add .entry-title { color: var(--muted); font-weight: 600; }
 
 /* Vaccine row badges. Colors are existing theme vars only, and every badge

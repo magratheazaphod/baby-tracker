@@ -1881,11 +1881,27 @@ function milestoneBracketProgress(bracket, achievedMap) {
   return { achieved, total: items.length }
 }
 
+// A repeated skill's sub-line: which earlier bracket it raises the bar on, and
+// whether that earlier item is checked off. Checking this item never implies
+// the earlier one - they're separate observations on separate days.
+function milestoneSupersedesHtml(item, achievedMap) {
+  if (!item.supersedes) return ''
+  const prev = MILESTONE_CHECKLIST.find((m) => m.id === item.supersedes)
+  if (!prev) return ''
+  const prevEv = achievedMap.get(`cdc:${prev.id}`)
+  const status = prevEv ? `✅ ${shortDateFmt.format(new Date(prevEv.occurred_at))}` : 'not yet'
+  return `<div class="ms-sub">Builds on ${prev.bracket} mo · ${escapeHtml(status)}</div>`
+}
+
 function milestoneItemHtml(item, achievedMap) {
   const ev = achievedMap.get(`cdc:${item.id}`)
+  const note = item.note ? `<div class="ms-sub">${escapeHtml(item.note)}</div>` : ''
   return `<div class="entry ms-item" data-ms-item="${escapeHtml(item.id)}">
     <span class="entry-emoji">${ev ? '✅' : '⚪'}</span>
-    <div class="entry-body"><div class="entry-title">${escapeHtml(item.text)}</div></div>
+    <div class="entry-body">
+      <div class="entry-title">${escapeHtml(item.text)}</div>
+      ${note}${milestoneSupersedesHtml(item, achievedMap)}
+    </div>
     ${ev ? `<div class="entry-time">${shortDateFmt.format(new Date(ev.occurred_at))}</div>` : ''}
   </div>`
 }
