@@ -18,7 +18,7 @@ db.pragma('journal_mode = WAL')
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','pump','diaper','weight','height','head','photo','milestone')),
+  type TEXT NOT NULL CHECK(type IN ('breastfeed','formula','pump','diaper','weight','height','head','photo','milestone','vaccination')),
   occurred_at TEXT NOT NULL,
   created_by TEXT NOT NULL,
   notes TEXT,
@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS events (
   height_cm REAL,
   head_cm REAL,
   photo_path TEXT,
+  vaccine TEXT,
+  dose_num INTEGER,
   awake_after INTEGER NOT NULL DEFAULT 0,
   analysis TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -133,6 +135,25 @@ if (!db.prepare("SELECT sql FROM sqlite_master WHERE name = 'events'").get().sql
     COMMIT;
   `)
   console.log('migrated events table: added pumping type')
+}
+
+// Migration: 'vaccination' joined the type CHECK, plus the two columns it
+// needs (vaccine = schedule code, dose_num = which dose in the series). The
+// CHECK can't be altered in place, so rebuild once; keyed on the live table's
+// SQL so the column check and the CHECK check can't disagree. Runs after every
+// migration above so the old table has every column named here.
+if (!db.prepare("SELECT sql FROM sqlite_master WHERE name = 'events'").get().sql.includes("'vaccination'")) {
+  db.exec(`
+    BEGIN;
+    ALTER TABLE events RENAME TO events_old;
+    ${EVENTS_SCHEMA};
+    INSERT INTO events (id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, head_cm, photo_path, awake_after, analysis, created_at)
+      SELECT id, type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, head_cm, photo_path, awake_after, analysis, created_at FROM events_old;
+    DROP TABLE events_old;
+    CREATE INDEX IF NOT EXISTS idx_events_occurred ON events(occurred_at);
+    COMMIT;
+  `)
+  console.log('migrated events table: added vaccination type')
 }
 
 // Backfill: bottle feeds gained a kind (formula | breastmilk); rows logged

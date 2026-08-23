@@ -117,6 +117,14 @@ function describe(e) {
       return { emoji: '📷', title: 'Photo', sub: '' }
     case 'milestone':
       return { emoji: '🌟', title: e.notes || 'Milestone', sub: '' }
+    case 'vaccination': {
+      // Scheduled shots title from the reference data; free-form ones put the
+      // vaccine's name in notes, so the notes ARE the title (see entryEl).
+      const item = scheduleItemFor(e.vaccine, e.dose_num)
+      const name = item?.fullName || (e.vaccine ? e.vaccine.toUpperCase() : '') || e.notes || 'Vaccination'
+      const dose = item ? vaccineDoseLabel({ ...item, dose_num: e.dose_num }) : e.dose_num ? ` dose ${e.dose_num}` : ''
+      return { emoji: '💉', title: `${name}${dose}`, sub: '' }
+    }
     default:
       return { emoji: '❓', title: e.type, sub: '' }
   }
@@ -231,9 +239,10 @@ function sheetActions(existing) {
 }
 
 // Builds and opens the sheet for a new entry or an edit (existing = event row).
-// prefill (new milestone entries only) seeds notes/kind from a checklist item
-// without pretending the row already exists - the sheet still posts as a
-// fresh event on save.
+// prefill (new milestone and vaccination entries) seeds fields from a checklist
+// item without pretending the row already exists - the sheet still posts as a
+// fresh event on save. Milestones seed notes/kind; vaccinations seed
+// vaccine/dose_num plus a title override.
 function openSheet(type, { kind, existing, prefill } = {}) {
   const sheet = $('#sheet-form')
   const timeVal = toLocalInput(existing ? existing.occurred_at : new Date())
@@ -247,8 +256,15 @@ function openSheet(type, { kind, existing, prefill } = {}) {
     head: '🧠 Head circumference',
     photo: '📷 Photo',
     milestone: '🌟 Milestone',
+    vaccination: '💉 Vaccination',
   }
-  $('#sheet-title').textContent = (existing ? 'Edit — ' : '') + titles[type]
+  let title = titles[type]
+  if (type === 'vaccination') {
+    const dose = existing?.dose_num ?? prefill?.dose_num ?? null
+    const item = scheduleItemFor(existing?.vaccine ?? prefill?.vaccine, dose)
+    if (item) title = `💉 ${item.fullName}${vaccineDoseLabel({ ...item, dose_num: dose })}`
+  }
+  $('#sheet-title').textContent = (existing ? 'Edit — ' : '') + title
 
   let fields = ''
   if (type === 'breastfeed') {
@@ -350,6 +366,16 @@ function openSheet(type, { kind, existing, prefill } = {}) {
     fields = `${fieldTime(timeVal)}
       <input type="hidden" name="kind" value="${escapeHtml(kindVal)}">
       <label>What happened?<input type="text" name="notes" value="${escapeHtml(notesVal)}" placeholder="Rolled over for the first time" required></label>`
+  } else if (type === 'vaccination') {
+    const vaccineVal = existing?.vaccine ?? prefill?.vaccine ?? ''
+    const doseVal = existing?.dose_num ?? prefill?.dose_num ?? ''
+    const notesVal = existing?.notes ?? ''
+    fields = `${fieldTime(timeVal)}
+      <input type="hidden" name="vaccine" value="${escapeHtml(vaccineVal)}">
+      <input type="hidden" name="dose_num" value="${escapeHtml(doseVal)}">
+      ${vaccineVal
+        ? `<label>Notes (optional)<input type="text" name="notes" value="${escapeHtml(notesVal)}" placeholder="Lot, site, reaction"></label>`
+        : `<label>Which vaccine?<input type="text" name="notes" value="${escapeHtml(notesVal)}" placeholder="Vaccine name, lot, site, reaction" required></label>`}`
   }
 
   sheet.innerHTML = fields + sheetActions(existing)
@@ -553,6 +579,10 @@ function openSheet(type, { kind, existing, prefill } = {}) {
         }
         if (type === 'diaper') body.kind = fd.get('kind')
         if (type === 'milestone') body.kind = fd.get('kind') || null
+        if (type === 'vaccination') {
+          body.vaccine = fd.get('vaccine') || null
+          body.dose_num = fd.get('dose_num') ? Number(fd.get('dose_num')) : null
+        }
         if (type === 'weight') {
           body.weight_g = fd.get('unit') === 'kg'
             ? Math.round(Number(fd.get('kg')) * 1000)
@@ -608,8 +638,10 @@ function openSheet(type, { kind, existing, prefill } = {}) {
 
 function entryEl(e) {
   const { emoji, title, sub } = describe(e)
-  // Photo notes render as a caption below the image; milestone notes ARE the title.
-  const subText = [sub, e.type === 'photo' || e.type === 'milestone' ? '' : e.notes].filter(Boolean).join(' · ')
+  // Photo notes render as a caption below the image; milestone notes - and a
+  // free-form vaccination's - ARE the title.
+  const notesAreTitle = e.type === 'photo' || e.type === 'milestone' || (e.type === 'vaccination' && !e.vaccine)
+  const subText = [sub, notesAreTitle ? '' : e.notes].filter(Boolean).join(' · ')
   const div = document.createElement('div')
   div.className = 'entry'
   div.innerHTML = `
@@ -1878,20 +1910,204 @@ function milestoneBracketHtml(bracket, achievedMap, expandSet) {
   </div>`
 }
 
+// ---------- checklists: vaccines ----------
+//
+// VACCINE_SCHEDULE / VACCINE_VISITS / VACCINE_VISIT_LABELS come from
+// /vaccine-schedule.js (loaded before this file, see index.html). A recorded
+// shot is a 'vaccination' event matched on vaccine + dose_num; free-form ones
+// (vaccine null) live in the "Other" group and never claim a schedule row.
+
+function vaccineDataReady() {
+  return typeof VACCINE_SCHEDULE !== 'undefined' && typeof VACCINE_VISITS !== 'undefined'
+}
+
+// The schedule row a stored event belongs to, if any. Falls back to any row for
+// the same vaccine so an edited/odd dose number still shows a real name.
+function scheduleItemFor(vaccine, doseNum) {
+  if (!vaccine || typeof VACCINE_SCHEDULE === 'undefined') return null
+  const dose = doseNum ?? null
+  return (
+    VACCINE_SCHEDULE.find((v) => v.vaccine === vaccine && v.dose_num === dose) ||
+    VACCINE_SCHEDULE.find((v) => v.vaccine === vaccine) ||
+    null
+  )
+}
+
+// Well-visit group a schedule row belongs to: the latest visit age at or below
+// its recommended age.
+function visitForVaccine(item) {
+  let visit = VACCINE_VISITS[0]
+  for (const v of VACCINE_VISITS) if (v <= item.window.recommended) visit = v
+  return visit
+}
+
+function vaccineKey(vaccine, doseNum) {
+  return `${vaccine}|${doseNum ?? ''}`
+}
+
+// vaccine|dose -> event, plus a per-vaccine list for repeatable rows and the
+// leftovers that match no schedule row.
+async function fetchVaccinations() {
+  const rows = await api('/api/events?type=vaccination&limit=500')
+  const byKey = new Map()
+  const byVaccine = new Map()
+  const other = []
+  rows.forEach((e) => {
+    if (e.vaccine && scheduleItemFor(e.vaccine, e.dose_num)) {
+      byKey.set(vaccineKey(e.vaccine, e.dose_num), e)
+      if (!byVaccine.has(e.vaccine)) byVaccine.set(e.vaccine, [])
+      byVaccine.get(e.vaccine).push(e)
+    } else {
+      other.push(e)
+    }
+  })
+  byVaccine.forEach((list) => list.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at)))
+  return { byKey, byVaccine, other }
+}
+
+// done | due | overdue | upcoming. Unknown age (no birth date) can only say
+// "upcoming" for anything not already recorded.
+function vaccineRowState(item, ageMo, done) {
+  if (done) return 'done'
+  if (ageMo == null) return 'upcoming'
+  if (ageMo > item.window.latest) return 'overdue'
+  if (ageMo >= item.window.earliest) return 'due'
+  return 'upcoming'
+}
+
+const VAX_BADGES = { due: 'Due', overdue: 'Overdue', upcoming: '' }
+
+function vaccineBadgeHtml(item, state) {
+  if (state === 'done' || state === 'upcoming') return ''
+  // A seasonal item is never "overdue" - the window is the RSV season, not a
+  // catch-up deadline, so past its age range it simply stops being flagged.
+  if (item.seasonal) return state === 'due' ? '<span class="vax-badge due">Seasonal</span>' : ''
+  return `<span class="vax-badge ${state}">${VAX_BADGES[state]}</span>`
+}
+
+// "dose N" only helps when the vaccine really is a series in this window.
+function vaccineDoseLabel(item) {
+  if (item.repeatable || !item.dose_num) return ''
+  return VACCINE_SCHEDULE.filter((v) => v.vaccine === item.vaccine).length > 1 ? ` dose ${item.dose_num}` : ''
+}
+
+function vaccineRowHtml(item, { state, ev, doseLabel }) {
+  const dose = doseLabel ?? vaccineDoseLabel(item)
+  const emoji = state === 'done' ? '✅' : state === 'overdue' ? '💉' : state === 'due' ? '💉' : '⚪'
+  const right = ev
+    ? `<div class="entry-time">${shortDateFmt.format(new Date(ev.occurred_at))}</div>`
+    : `<div class="entry-time">${vaccineBadgeHtml(item, state)}</div>`
+  const sub = [item.note, ev?.notes].filter(Boolean).join(' · ')
+  return `<div class="entry vax-item" data-vax="${escapeHtml(item.vaccine)}" data-vax-dose="${item.dose_num ?? ''}"${ev ? ` data-vax-event="${ev.id}"` : ''}>
+    <span class="entry-emoji">${emoji}</span>
+    <div class="entry-body">
+      <div class="entry-title">${escapeHtml(item.name + dose)}</div>
+      ${sub ? `<div class="entry-sub">${escapeHtml(sub)}</div>` : ''}
+    </div>
+    ${right}
+  </div>`
+}
+
+// One visit group ("2 months"): its schedule rows, with repeatable rows
+// expanded into one row per recorded dose plus an "add another" row.
+function vaccineVisitHtml(visit, vax, ageMo, expandSet) {
+  const items = VACCINE_SCHEDULE.filter((v) => visitForVaccine(v) === visit)
+  if (!items.length) return ''
+  let rows = ''
+  let done = 0
+  let total = 0
+  for (const item of items) {
+    if (item.repeatable) {
+      const given = vax.byVaccine.get(item.vaccine) || []
+      given.forEach((ev, i) => {
+        rows += vaccineRowHtml(item, { state: 'done', ev, doseLabel: ` dose ${i + 1}` })
+      })
+      const state = vaccineRowState(item, ageMo, false)
+      rows += vaccineRowHtml(item, { state, doseLabel: given.length ? ' - add another' : '' })
+      total += 1
+      if (given.length) done += 1
+    } else {
+      const ev = vax.byKey.get(vaccineKey(item.vaccine, item.dose_num))
+      rows += vaccineRowHtml(item, { state: vaccineRowState(item, ageMo, !!ev), ev })
+      total += 1
+      if (ev) done += 1
+    }
+  }
+  const stored = localStorage.getItem(`checklist:vaxgroup:${visit}`)
+  const open = stored ? stored === 'open' : expandSet.has(visit)
+  const label = VACCINE_VISIT_LABELS?.[visit] ?? `${visit} months`
+  return `<div class="tile-group">
+    <button class="tile-group-label" data-vax-group="${visit}" aria-expanded="${open}" aria-controls="vaxgrp-${visit}">
+      <span class="caret">▶</span>${escapeHtml(label)}<span class="ms-progress">${done} of ${total}</span>
+    </button>
+    <div id="vaxgrp-${visit}"${open ? '' : ' hidden'}>${rows}</div>
+  </div>`
+}
+
+// Visits open by default: every one reached so far, plus the next.
+function expandedVaccineVisits(ageMo) {
+  const set = new Set()
+  if (ageMo == null) {
+    set.add(VACCINE_VISITS[0])
+    return set
+  }
+  let addedNext = false
+  for (const v of VACCINE_VISITS) {
+    if (v <= ageMo) set.add(v)
+    else if (!addedNext) {
+      set.add(v)
+      addedNext = true
+    }
+  }
+  return set
+}
+
+function vaccinesHtml(vax, ageMo) {
+  const expandSet = expandedVaccineVisits(ageMo)
+  const groups = VACCINE_VISITS.map((v) => vaccineVisitHtml(v, vax, ageMo, expandSet)).join('')
+  const otherRows = vax.other
+    .map(
+      (ev) => `<div class="entry vax-item" data-vax-event="${ev.id}">
+        <span class="entry-emoji">✅</span>
+        <div class="entry-body"><div class="entry-title">${escapeHtml(ev.notes || ev.vaccine || 'Vaccination')}</div></div>
+        <div class="entry-time">${shortDateFmt.format(new Date(ev.occurred_at))}</div>
+      </div>`
+    )
+    .join('')
+  const other = `<div class="tile-group">
+    <button class="tile-group-label" data-vax-group="other" aria-expanded="true" aria-controls="vaxgrp-other">
+      <span class="caret">▶</span>Other<span class="ms-progress">${vax.other.length}</span>
+    </button>
+    <div id="vaxgrp-other">
+      ${otherRows}
+      <div class="entry ms-add" data-vax-add="1">
+        <span class="entry-emoji">➕</span>
+        <div class="entry-body"><div class="entry-title">Add other vaccination</div></div>
+      </div>
+    </div>
+  </div>`
+  return groups + other
+}
+
 async function loadChecklists() {
   const el = $('#checklists')
   if (!checklistDataReady()) {
     el.innerHTML = '<div class="day-header">Checklist data isn’t loaded.</div>'
     return
   }
-  const achievedMap = await fetchMilestoneKinds().catch(() => new Map())
+  const [achievedMap, vax] = await Promise.all([
+    fetchMilestoneKinds().catch(() => new Map()),
+    vaccineDataReady()
+      ? fetchVaccinations().catch(() => ({ byKey: new Map(), byVaccine: new Map(), other: [] }))
+      : Promise.resolve(null),
+  ])
   const ageMo = cfg?.birthDate ? ageInMonths(cfg.birthDate) : null
   const expandSet = expandedMilestoneBrackets(ageMo)
   const milestonesHtml = MILESTONE_BRACKETS.map((b) => milestoneBracketHtml(b, achievedMap, expandSet)).join('')
 
-  // Sub-tab chrome mirrors Reports: one tab today ("Milestones"), structure
-  // ready for a "Vaccines" sibling in a follow-up PR.
+  // Sub-tab chrome mirrors Reports.
   const sections = [{ id: 'milestones', label: 'Milestones', html: milestonesHtml }]
+  if (vax) sections.push({ id: 'vaccines', label: 'Vaccines', html: vaccinesHtml(vax, ageMo) })
   let active = localStorage.getItem('checklistsTab') || 'milestones'
   if (!sections.some((s) => s.id === active)) active = 'milestones'
 
@@ -1934,6 +2150,36 @@ async function loadChecklists() {
 
   el.querySelectorAll('[data-ms-add]').forEach((row) => {
     row.onclick = () => openSheet('milestone')
+  })
+
+  el.querySelectorAll('[data-vax-group]').forEach((btn) => {
+    btn.onclick = () => {
+      const group = btn.dataset.vaxGroup
+      const open = btn.getAttribute('aria-expanded') === 'true'
+      btn.setAttribute('aria-expanded', String(!open))
+      $(`#vaxgrp-${group}`).hidden = open
+      localStorage.setItem(`checklist:vaxgroup:${group}`, open ? 'closed' : 'open')
+    }
+  })
+
+  el.querySelectorAll('.vax-item').forEach((row) => {
+    row.onclick = () => {
+      const id = row.dataset.vaxEvent
+      if (id) {
+        const ev = [...(vax?.byKey.values() ?? []), ...(vax?.other ?? [])].find((e) => String(e.id) === id) ||
+          [...(vax?.byVaccine.values() ?? [])].flat().find((e) => String(e.id) === id)
+        if (ev) openSheet('vaccination', { existing: ev })
+        return
+      }
+      const dose = row.dataset.vaxDose
+      openSheet('vaccination', {
+        prefill: { vaccine: row.dataset.vax, dose_num: dose ? Number(dose) : null },
+      })
+    }
+  })
+
+  el.querySelectorAll('[data-vax-add]').forEach((row) => {
+    row.onclick = () => openSheet('vaccination', { prefill: { vaccine: null, dose_num: null } })
   })
 }
 

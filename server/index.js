@@ -167,7 +167,7 @@ function requireAuth(req, res, next) {
 
 // --- events ---
 
-const TYPES = ['breastfeed', 'formula', 'pump', 'diaper', 'weight', 'height', 'head', 'photo', 'milestone']
+const TYPES = ['breastfeed', 'formula', 'pump', 'diaper', 'weight', 'height', 'head', 'photo', 'milestone', 'vaccination']
 const DIAPER_KINDS = ['pee', 'poop', 'both']
 // Bottle feeds keep the historical type name 'formula'; kind says what was in
 // the bottle. Rows from before the split have kind NULL and mean formula.
@@ -210,6 +210,25 @@ function validateEvent(type, body) {
           : 'Milestone kind must look like cdc:2mo-smiles'
       }
       return null
+    case 'vaccination': {
+      // vaccine carries a code from the CDC/ACIP schedule (public/vaccine-
+      // schedule.js), e.g. 'dtap'; free-form shots leave it null and put the
+      // vaccine's name in notes. dose_num says which dose in the series.
+      const hasNotes = typeof body.notes === 'string' && body.notes.trim()
+      if (body.vaccine != null) {
+        if (!(typeof body.vaccine === 'string' && body.vaccine.length <= 32 && /^[a-z0-9-]+$/.test(body.vaccine))) {
+          return 'Vaccine code must be lower-case letters, digits or dashes'
+        }
+      } else if (!hasNotes) {
+        return 'Vaccination needs a vaccine or a description'
+      }
+      if (body.dose_num != null) {
+        if (!(Number.isInteger(body.dose_num) && body.dose_num >= 1 && body.dose_num <= 10)) {
+          return 'Dose number must be a whole number from 1 to 10'
+        }
+      }
+      return null
+    }
   }
 }
 
@@ -223,6 +242,7 @@ const FIELDS_BY_TYPE = {
   head: ['head_cm'],
   photo: [],
   milestone: ['kind'],
+  vaccination: ['vaccine', 'dose_num'],
 }
 
 function insertEvent(type, body, user) {
@@ -238,6 +258,8 @@ function insertEvent(type, body, user) {
     height_cm: null,
     head_cm: null,
     photo_path: body.photo_path || null,
+    vaccine: null,
+    dose_num: null,
     awake_after: 0,
   }
   for (const f of FIELDS_BY_TYPE[type]) row[f] = body[f] ?? null
@@ -245,8 +267,8 @@ function insertEvent(type, body, user) {
   row.awake_after = row.awake_after ? 1 : 0
   const info = db
     .prepare(
-      `INSERT INTO events (type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, head_cm, photo_path, awake_after)
-       VALUES (@type, @occurred_at, @created_by, @notes, @duration_min, @amount_ml, @kind, @weight_g, @height_cm, @head_cm, @photo_path, @awake_after)`
+      `INSERT INTO events (type, occurred_at, created_by, notes, duration_min, amount_ml, kind, weight_g, height_cm, head_cm, photo_path, vaccine, dose_num, awake_after)
+       VALUES (@type, @occurred_at, @created_by, @notes, @duration_min, @amount_ml, @kind, @weight_g, @height_cm, @head_cm, @photo_path, @vaccine, @dose_num, @awake_after)`
     )
     .run(row)
   return db.prepare('SELECT * FROM events WHERE id = ?').get(info.lastInsertRowid)
