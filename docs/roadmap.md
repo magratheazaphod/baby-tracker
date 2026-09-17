@@ -25,3 +25,10 @@ due badges suffice).
 
 Done: /api/health + Fly http check; refresh-on-focus (duplicate-entry
 warning still open).
+
+## Self-hostable release (agreed 2026-09-17)
+
+Package the app so technical parents can install it themselves. Six PRs:
+license + scope, zero-config first boot, docker-compose path + GHCR image,
+test suite + CI, README rewrite + v1.0.0, hosted demo for the portfolio.
+Details in `docs/plans/self-hostable.md`.
