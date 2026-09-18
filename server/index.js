@@ -1109,5 +1109,9 @@ app.get('/manifest.webmanifest', (req, res) => {
 
 app.use(express.static(path.join(__dirname, '..', 'public')))
 
-app.listen(PORT, () => console.log(`baby-tracker listening on :${PORT} (tz ${HOME_TZ})`))
+// Logs the port actually bound rather than the configured one, so PORT=0 (an
+// ephemeral port, which the test harness relies on) is still discoverable.
+const server = app.listen(PORT, () =>
+  console.log(`baby-tracker listening on :${server.address().port} (tz ${HOME_TZ})`)
+)
 startNudgeTimer()

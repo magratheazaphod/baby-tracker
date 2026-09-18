@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env server/index.js",
+    "test": "node --test 'test/**/*.test.js'",
     "make-icons": "node scripts/make-icons.js"
   },
   "dependencies": {

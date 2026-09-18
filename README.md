@@ -47,6 +47,7 @@ npm install
 npm run make-icons   # once, generates public/icons/*.png
 cp .env.example .env # optional — every key has a usable dev default
 npm start            # http://localhost:3000
+npm test             # API test suite, no config needed
 ```
 
 Configuration is read from `.env`; `.env.example` documents every key, and the
