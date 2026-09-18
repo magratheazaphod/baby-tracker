@@ -19,16 +19,18 @@ due badges suffice).
 
 ## Standing items
 
-1. API test suite (validation, auth boundaries, reports aggregation, nudge,
-   and now the checklist/thumbnail/photo-nudge surfaces).
+1. Extend the API test suite to the checklist, thumbnail, photo-upload and
+   photo-nudge surfaces (auth is covered; behaviour is not).
 2. Optional: store original-resolution photos (currently 1600px only).
 
 Done: /api/health + Fly http check; refresh-on-focus (duplicate-entry
-warning still open).
+warning still open); API test suite + CI (PR #22); per-PR docs-accuracy
+check (PR #24).
 
 ## Self-hostable release (agreed 2026-09-17)
 
 Package the app so technical parents can install it themselves. Six PRs:
-license + scope, zero-config first boot, docker-compose path + GHCR image,
-test suite + CI, README rewrite + v1.0.0, hosted demo for the portfolio.
-Details in `docs/plans/self-hostable.md`.
+license + scope (pending license decision), zero-config first boot (#25,
+done), docker-compose path + GHCR image (#26, done), test suite + CI (#22,
+done), README rewrite (#23, text done; screenshots + v1.0.0 tag remain),
+hosted demo for the portfolio. Details in `docs/plans/self-hostable.md`.
