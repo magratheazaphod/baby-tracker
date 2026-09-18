@@ -85,6 +85,41 @@ re-running it reproduces the same screenshots. It refuses to write to a live
 `DATA_DIR`, and `--env-file=` (rather than `npm start`) keeps your real
 `.env` out of the demo process.
 
+## Deploying anywhere (Docker)
+
+A prebuilt multi-arch image is published to GitHub Container Registry on
+every release, so a Raspberry Pi, a home server or any VPS with Docker can
+run the app without compiling anything.
+
+```sh
+git clone https://github.com/magratheazaphod/baby-tracker && cd baby-tracker
+# (or just download docker-compose.yml and .env.example into an empty folder)
+cp .env.example .env   # set APP_SECRET, USER_NAMES, BABY_NAME, BIRTH_DATE,
+                       # BABY_SEX and HOME_TZ at minimum
+docker compose up -d
+curl -s http://127.0.0.1:3000/api/health   # {"ok":true}
+```
+
+The app binds to localhost only, because the "Add to Home Screen" install
+flow and Web Push notifications both require HTTPS. Put a reverse proxy with
+automatic certificates in front of it. A ready-made Caddy setup is included:
+point DNS at the host, replace `tracker.example.com` in
+[`deploy/caddy/Caddyfile`](deploy/caddy/Caddyfile), then
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
+```
+
+Traefik, nginx or a Cloudflare tunnel work just as well; proxy to port 3000.
+
+Then on each phone: open the app URL in Safari → Share → **Add to Home
+Screen** → open it from the home screen → log in → tap 🔔 to enable nudges.
+
+The named `data` volume holds the SQLite database and every photo. Back it up
+the same way as any other install: `GET /api/export` or `scripts/backup.sh`
+(see [Backups](#backups)). To upgrade, `docker compose pull && docker compose
+up -d`; schema migrations run automatically at startup.
+
 ## Deploying to Fly.io
 
 ```sh
