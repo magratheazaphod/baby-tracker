@@ -13,8 +13,8 @@ need to change; the remaining work is packaging, trust signals and docs.
 
 ## What blocked a stranger on 2026-09-17 (status as of 2026-09-18)
 
-- No license file, so nobody may legally use or fork it. **Open** (license
-  decision pending).
+- No license file, so nobody may legally use or fork it. **Done**: MIT,
+  per the owner's global licensing policy.
 - Fly was the only documented deploy path. **Done** in #26: docker-compose,
   Caddy overlay, GHCR image published on tags.
 - First boot needed manual steps (`npm run make-icons`, VAPID key
@@ -25,8 +25,7 @@ need to change; the remaining work is packaging, trust signals and docs.
 - README described the newborn-era app. **Text done** in #23; fresh
   screenshots, CHANGELOG and the `v1.0.0` tag remain.
 - Design scope (two caregivers, one baby, CDC/US schedules, English) was
-  implicit. **Partly done**: README has a "who it is for" line; the formal
-  "Not goals" section lands with the license PR.
+  implicit. **Done**: README has "Who it is for" and "Not goals".
 - Heavy required deps (`sharp`, Anthropic SDK) even when the feature is off.
   **Mitigated** by the prebuilt image; making them optional stays deferred.
 - No tags, changelog, or stated upgrade/migration behaviour. **Open**, part
@@ -34,9 +33,9 @@ need to change; the remaining work is packaging, trust signals and docs.
 
 ## Plan - one PR per step
 
-1. **License and scope statement.** Add a LICENSE (MIT favoured for adoption;
-   AGPL if forks-must-stay-open matters more - decide before merging). README
-   gains "Who this is for" and "Not goals" sections.
+1. **License and scope statement.** Done: MIT LICENSE, `license` field in
+   package.json, README License section with the public-data carve-out, and
+   "Who it is for" / "Not goals" sections.
 2. **Zero-config first boot.** Auto-generate icons and VAPID keys when absent
    and persist them under `DATA_DIR`. Print a startup banner listing which
    optional features are enabled. Refuse to start in production with the

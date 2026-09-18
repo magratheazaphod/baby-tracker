@@ -34,6 +34,10 @@ Production is live and the parents depend on it.
   these properties when touching auth or adding endpoints.
 - Anything published (README, issues, demos) must use a fully synthetic
   instance, never the real one - see the `baby-tracker-publishing` skill.
+- The owner's name appears in exactly one committed place: the copyright line
+  of `LICENSE`, as required by the MIT text and the owner's licensing policy.
+  It is the public GitHub account holder's name, not the other parent's or the
+  baby's, and the privacy grep will hit it; that hit is expected.
 - The Anthropic federation, organization, workspace and service-account IDs
   in `.github/workflows/docs-check.yml` are intentionally committed: they are
   identifiers, not credentials, and the Console rule (this repo, pull_request
