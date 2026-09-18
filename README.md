@@ -27,16 +27,18 @@ single-family: two named caregivers, one baby, one shared secret.
   with percentiles computed from the LMS tables for the baby's sex.
 - **Checklists** - the CDC "Learn the Signs. Act Early." milestone list,
   bracketed by age off the birth date, and the CDC/ACIP immunization schedule
-  with due and overdue badges. Checking an item logs it as an event.
+  with due and overdue badges. Tapping an item opens a pre-filled sheet;
+  saving it records the milestone or shot as an event in the timeline.
 - **Photos** - a gallery grouped by baby-month with monthly-birthday badges,
-  thumbnails generated on demand, and optional push nudges when the gallery
-  goes stale or a month-iversary arrives.
+  thumbnails generated on demand, and push nudges (on by default, each with
+  its own off switch, daytime only) when the gallery goes stale or a
+  month-iversary arrives.
 - **Timeline and Reports** - reverse-chronological entries filterable by
   type; daily feeding, diaper, pumping and appetite charts; an inferred
   sleep-cycle view built from the gaps between feeds.
-- **Push notifications** - a feed nudge after N quiet hours (off by default
-  once the newborn phase passes, one env var to re-enable) plus the photo
-  nudges above. Web Push, no vendor account needed.
+- **Push notifications** - a feed nudge after N quiet hours (on by default
+  at 6h; set `NUDGE_HOURS=0` to switch it off once the newborn phase passes)
+  plus the photo nudges above. Web Push, no vendor account needed.
 - **Voice logging** (optional) - an in-app microphone button and a Siri
   Shortcut, both parsed by Claude, in English or Mandarin.
 - **Backups** - a one-request tar.gz export of the database and photos.
@@ -185,8 +187,9 @@ the keys:
 
 - **In-app microphone button** - needs `ANTHROPIC_API_KEY` plus
   `TRANSCRIBE_API_KEY` for speech-to-text (any OpenAI-compatible
-  `/v1/audio/transcriptions` endpoint; Groq by default). Handles English,
-  Mandarin, and sentences that switch between them.
+  `/v1/audio/transcriptions` endpoint; Groq by default). The button appears
+  as soon as the transcription key is set, so set both or every attempt
+  fails. Handles English, Mandarin, and sentences that switch between them.
 - **Siri Shortcut** - `POST /api/voice` takes a dictated sentence, saves the
   events, and returns a spoken confirmation, so "Hey Siri, Log Baby" works
   hands-free. Needs `ANTHROPIC_API_KEY` plus its own `VOICE_TOKEN`
