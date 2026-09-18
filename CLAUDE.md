@@ -5,7 +5,10 @@ process (Express + better-sqlite3) serves a no-build vanilla-JS frontend, owns
 SQLite + photos on a Fly.io volume, and runs a push-notification nudge timer.
 No framework, no bundler. `npm test` runs an API suite (Node's built-in
 runner, `test/`) covering auth boundaries, validation, reports, export and
-the nudge logic; UI verification is manual.
+the nudge logic; UI verification is manual. CI runs that suite on every PR
+and push to main, plus a documentation-accuracy check that comments on each
+non-draft PR raised from this repo (`.github/workflows/docs-check.yml`); it
+never pushes, and fork PRs are skipped.
 
 Production is live and the parents depend on it.
 
@@ -23,19 +26,28 @@ Production is live and the parents depend on it.
   `BABY_SEX`, `BIRTH_DATE`).
 - Before every commit, audit: grep the tree for the real values from `.env`
   (names, app name, emails, birth year, secret) across `*.js`, `*.md`,
-  `*.html` - expect zero hits in committable files - and eyeball `git add -n`
-  output for unexpected files.
+  `*.html`, `*.yml` - expect zero hits in committable files - and eyeball
+  `git add -n` output for unexpected files.
 - Anonymous requests must never receive personal data: `/api/config` returns
   only `{user:null}` pre-auth, the manifest returns a generic name without a
   login cookie, login is two-step (secret proven → names revealed). Preserve
   these properties when touching auth or adding endpoints.
 - Anything published (README, issues, demos) must use a fully synthetic
   instance, never the real one - see the `baby-tracker-publishing` skill.
+- The Anthropic federation, organization, workspace and service-account IDs
+  in `.github/workflows/docs-check.yml` are intentionally committed: they are
+  identifiers, not credentials, and the Console rule (this repo, pull_request
+  runs, owner pinned by numeric ID) is what restricts their use.
 
 ## Workflow
 
 - Work on a branch and open a PR. `main` is what's deployed - never push to it
   directly.
+- Every non-draft, same-repo PR gets an automated docs-accuracy comment from
+  Claude: it audits README, CLAUDE.md, `.env.example`, `fly.toml.example` and
+  `docs/*` against the diff. Comment-only (one sticky comment, no commits);
+  authenticates via workload identity federation, so there is no repository
+  secret to rotate.
 - Deploying and the backup pipeline: `baby-tracker-ops` skill.
 - Screenshots, demo data, anything published: `baby-tracker-publishing` skill.
 - Agreed next steps: `docs/roadmap.md`.
@@ -84,6 +96,9 @@ assumption, so the app can flex as the family's needs change.
   deliberate: it's what US pediatricians use under age 2 - parents compare the
   app's percentiles to doctor visits.
 - `public/sw.js` - network-first service worker + push/notificationclick.
+- `.github/workflows/docs-check.yml` - PR-time docs-accuracy agent. Read-only
+  tools plus the PR-comment tool; a prior step writes the diff to `pr.diff`
+  so the agent needs no shell.
 
 ## Key patterns
 
