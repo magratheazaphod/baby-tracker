@@ -56,6 +56,7 @@ jobs:
           anthropic_workspace_id: wrkspc_01UYVVjvFjUgLiKEkxuoqn1D
           github_token: ${{ secrets.GITHUB_TOKEN }}
           use_sticky_comment: true
+          show_full_output: true  # temporary, for diagnosing the federation exchange
           claude_args: >-
             --allowedTools "Read,Grep,Glob,mcp__github_comment__update_claude_comment"
             --max-turns 15
