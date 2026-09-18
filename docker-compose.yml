@@ -1,0 +1,38 @@
+# Self-host baby-tracker with Docker Compose.
+#
+#   cp .env.example .env    # set APP_SECRET, USER_NAMES, BABY_NAME, BIRTH_DATE,
+#                           # BABY_SEX and HOME_TZ at minimum
+#   docker compose up -d
+#
+# The app listens on localhost only. Put an HTTPS reverse proxy in front of
+# it (see docker-compose.caddy.yml for a ready-made Caddy overlay): the PWA
+# "Add to Home Screen" flow and Web Push notifications both require HTTPS.
+#
+# The named volume holds the SQLite database and every photo. Back it up with
+# /api/export or scripts/backup.sh (see README, "Backups").
+
+services:
+  baby-tracker:
+    image: ghcr.io/magratheazaphod/baby-tracker:latest
+    # To build from a local checkout instead of pulling the published image:
+    # build: .
+    container_name: baby-tracker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      NODE_ENV: production
+    volumes:
+      - data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      # node:22-slim has no curl; fetch is built into Node.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  data:

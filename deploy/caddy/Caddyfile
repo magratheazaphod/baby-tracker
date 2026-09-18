@@ -1,0 +1,7 @@
+# Replace tracker.example.com with your hostname. Caddy obtains and renews the
+# certificate automatically; the app itself only ever speaks plain HTTP on the
+# internal Docker network.
+tracker.example.com {
+	encode zstd gzip
+	reverse_proxy baby-tracker:3000
+}
