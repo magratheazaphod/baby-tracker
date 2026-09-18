@@ -9,12 +9,15 @@
 # - persist-credentials: false keeps that token out of .git/config, which the
 #   agent can read.
 # - No Bash tool at all: the diff is written to a file beforehand and the
-#   agent only reads. This keeps ANTHROPIC_API_KEY (present in the agent's
-#   environment) out of reach of argument-echoing commands.
+#   agent only reads, so nothing in its environment can be echoed by a
+#   command argument.
 #
-# Needs one repository secret: ANTHROPIC_API_KEY (or swap in
-# CLAUDE_CODE_OAUTH_TOKEN via `claude setup-token`). GitHub withholds secrets
-# from fork PRs, and the `if:` below makes that explicit.
+# Anthropic auth is workload identity federation, not an API key: the runner's
+# OIDC token is exchanged for an access token that lives ten minutes and is
+# scoped to one workspace. The Console rule only matches pull_request runs of
+# this exact repository, pinned to the owner's numeric GitHub ID. The IDs
+# below are identifiers, not credentials. No repository secret is needed.
+# The `if:` below keeps fork PRs out as well.
 name: Docs accuracy check
 
 on:
@@ -35,6 +38,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +50,10 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: fdrl_01XRxfxVDiB5zomSXkvr2XEw
+          anthropic_organization_id: 93ce1471-c953-4b13-a0c4-d32594bfacd7
+          anthropic_service_account_id: svac_01An3agFDx9UyA8zSty2Tp3y
+          anthropic_workspace_id: wrkspc_01UYVVjvFjUgLiKEkxuoqn1D
           github_token: ${{ secrets.GITHUB_TOKEN }}
           use_sticky_comment: true
           claude_args: >-
