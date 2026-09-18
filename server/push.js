@@ -26,6 +26,10 @@ const TYPE_LABELS = {
   diaper: '💩 a diaper',
 }
 
+// Where the VAPID keys came from, for the startup banner: 'env' or
+// 'generated' (persisted under DATA_DIR).
+export let vapidSource = 'env'
+
 function loadVapidKeys() {
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
     return {
@@ -33,7 +37,10 @@ function loadVapidKeys() {
       privateKey: process.env.VAPID_PRIVATE_KEY,
     }
   }
-  // Dev convenience: generate once and persist alongside the database.
+  // No keys configured: generate once and persist alongside the database, so
+  // any install gets working push without a setup step. Subscriptions are
+  // bound to these keys, so a wiped DATA_DIR means everyone re-subscribes.
+  vapidSource = 'generated'
   const keyFile = path.join(DATA_DIR, 'vapid.json')
   if (fs.existsSync(keyFile)) return JSON.parse(fs.readFileSync(keyFile, 'utf8'))
   const keys = webpush.generateVAPIDKeys()

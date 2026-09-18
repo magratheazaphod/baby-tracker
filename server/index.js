@@ -11,7 +11,8 @@ import { queueDiaperAnalysis } from './analyze.js'
 import { parseUtterance, outOfBounds, say, langOf, confirmation, duplicateWarning, answer, scriptLang } from './voice.js'
 import { transcribeAudio, transcribeConfigured } from './transcribe.js'
 import { percentileFor } from './growth.js'
-import { vapidKeys, sendToAll, startNudgeTimer } from './push.js'
+import { vapidKeys, vapidSource, sendToAll, startNudgeTimer } from './push.js'
+import { printBanner } from './banner.js'
 
 // Keep libvips lean: the Fly machine is small and uploads arrive one at a
 // time, so trading throughput for a flat memory profile is free.
@@ -33,8 +34,18 @@ const COOKIE_SECRET =
   crypto.createHash('sha256').update(`cookie:${APP_SECRET}`).digest('hex')
 const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.FLY_APP_NAME
 
+// Refuse to serve a real deployment behind the well-known dev secret. This
+// also covers COOKIE_SECRET, which is derived from APP_SECRET when unset.
 if (APP_SECRET === 'baby' && IS_PROD) {
-  console.warn('WARNING: APP_SECRET is the default — set a real one with `fly secrets set APP_SECRET=...`')
+  console.error(
+    [
+      'baby-tracker refused to start: APP_SECRET is the default dev value.',
+      'Set a real shared secret before running in production, e.g.',
+      '  fly secrets set APP_SECRET=...                            (Fly)',
+      '  APP_SECRET=... in your .env or compose environment       (Docker)',
+    ].join('\n')
+  )
+  process.exit(1)
 }
 
 const app = express()
@@ -1109,5 +1120,17 @@ app.get('/manifest.webmanifest', (req, res) => {
 
 app.use(express.static(path.join(__dirname, '..', 'public')))
 
-app.listen(PORT, () => console.log(`baby-tracker listening on :${PORT} (tz ${HOME_TZ})`))
+// Logs the port actually bound rather than the configured one, so PORT=0 (an
+// ephemeral port, which the test harness relies on) is still discoverable.
+// The banner's first line keeps the "listening on :<port>" shape the harness
+// parses.
+const server = app.listen(PORT, () =>
+  printBanner({
+    port: server.address().port,
+    homeTz: HOME_TZ,
+    dataDir: DATA_DIR,
+    appName: process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker',
+    vapidSource,
+  })
+)
 startNudgeTimer()

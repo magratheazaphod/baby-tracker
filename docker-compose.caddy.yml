@@ -1,0 +1,37 @@
+# HTTPS overlay: Caddy in front of the app with automatic Let's Encrypt
+# certificates. Kept as a separate overlay rather than a commented block so
+# the base compose stays valid on its own and people with an existing proxy
+# (Traefik, nginx, a Cloudflare tunnel) can ignore this file entirely.
+#
+#   1. Point a DNS A/AAAA record at this host.
+#   2. Edit deploy/caddy/Caddyfile: replace tracker.example.com.
+#   3. docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
+#
+# Ports 80 and 443 must be reachable from the internet for certificate
+# issuance. The PWA install flow and Web Push both require HTTPS, so there is
+# no useful plain-HTTP deployment beyond localhost testing.
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: baby-tracker-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      baby-tracker:
+        condition: service_healthy
+
+  baby-tracker:
+    # With Caddy in front, the app no longer needs a host port at all.
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:
