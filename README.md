@@ -46,6 +46,7 @@ private volume, and photos are only served behind login.
 npm install
 cp .env.example .env # optional - every key has a usable dev default
 npm start            # http://localhost:3000
+npm test             # API test suite, no config needed
 ```
 
 A fresh clone boots with no other setup: the data directory and push keys

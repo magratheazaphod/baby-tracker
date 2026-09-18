@@ -1120,6 +1120,10 @@ app.get('/manifest.webmanifest', (req, res) => {
 
 app.use(express.static(path.join(__dirname, '..', 'public')))
 
+// Logs the port actually bound rather than the configured one, so PORT=0 (an
+// ephemeral port, which the test harness relies on) is still discoverable.
+// The banner's first line keeps the "listening on :<port>" shape the harness
+// parses.
 const server = app.listen(PORT, () =>
   printBanner({
     port: server.address().port,
