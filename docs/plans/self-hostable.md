@@ -49,9 +49,21 @@ need to change; the remaining work is packaging, trust signals and docs.
    milestones, vaccines. Restructure as a product page: what it is,
    screenshots, features, 5-minute install, configuration, backups,
    contributing. Add CHANGELOG.md and tag `v1.0.0`.
-6. **Portfolio hook.** A separate read-only demo instance seeded with
-   synthetic data (own Fly app, `APP_SECRET=demo`), linked from a short case
-   study on jesse-day.com. Never touches production.
+6. **Portfolio hook.** A separate demo instance seeded with synthetic data,
+   linked from a short case study on the owner's portfolio site. Because the
+   login secret will be public, it needs safeguards the code does not have
+   yet:
+   - a `DEMO_MODE=1` env flag that rejects every mutating route (events,
+     photos, voice, push subscribe, re-analyze) at middleware level and
+     disables `/api/export`;
+   - no `ANTHROPIC_API_KEY`, `TRANSCRIBE_API_KEY`, `VOICE_TOKEN` or VAPID
+     keys on that instance, so there is no paid API or push surface;
+   - a Fly app name and volume unrelated to the production app;
+   - seeded only by `scripts/seed-demo-data.js` with the demo env from the
+     `baby-tracker-publishing` skill, re-seeded on a schedule, and never
+     from the production `.env` or a backup tarball.
+   Everything under `docs/plans/` stays synthetic-only, like the rest of
+   the repo.
 
 ## Deferred, only on demand
 
