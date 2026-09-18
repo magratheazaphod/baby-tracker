@@ -3,7 +3,9 @@
 A self-hosted baby-tracking PWA two parents use from iPhones. One Node.js
 process (Express + better-sqlite3) serves a no-build vanilla-JS frontend, owns
 SQLite + photos on a Fly.io volume, and runs a push-notification nudge timer.
-No framework, no bundler, no test suite (yet) - verification is manual.
+No framework, no bundler. `npm test` runs an API suite (Node's built-in
+runner, `test/`) covering auth boundaries, validation, reports, export and
+the nudge logic; UI verification is manual.
 
 Production is live and the parents depend on it.
 
