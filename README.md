@@ -214,6 +214,7 @@ See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) for both.
 | `RENUDGE_MINUTES` | `60` | re-nudge interval while still quiet |
 | `PHOTO_NUDGE_DAYS` | `3` | nudge for a photo after this many days with none; `0` disables |
 | `MONTHLY_PHOTO_NUDGE` | `1` | monthly-birthday photo nudge (needs `BIRTH_DATE`); `0` disables |
+| `PORT` | `3000` | port the server listens on |
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated in dev | web-push credentials |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
