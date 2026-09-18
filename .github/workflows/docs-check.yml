@@ -71,6 +71,10 @@ jobs:
             behaviour, run commands, or post other content.
 
             1. Read the PR diff in the file `pr.diff` at the repository root.
+               Note: the action restores CLAUDE.md and .claude/ from the base
+               branch before you run, so the working-tree CLAUDE.md is the
+               OLD version. The PR's own version, if it changed, is under
+               `.claude-pr/`. Judge CLAUDE.md against that copy plus the diff.
             2. Check every documentation surface for statements that the diff
                makes stale, inaccurate, or incomplete:
                README.md (feature list, env-var table, setup steps),

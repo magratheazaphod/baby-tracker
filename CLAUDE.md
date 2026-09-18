@@ -5,7 +5,8 @@ process (Express + better-sqlite3) serves a no-build vanilla-JS frontend, owns
 SQLite + photos on a Fly.io volume, and runs a push-notification nudge timer.
 No framework, no bundler, no test suite (yet) - functional verification is
 manual. The one CI job is a documentation-accuracy check that comments on
-each PR (`.github/workflows/docs-check.yml`); it never pushes.
+each non-draft PR raised from this repo (`.github/workflows/docs-check.yml`);
+it never pushes, and fork PRs are skipped.
 
 Production is live and the parents depend on it.
 
@@ -22,8 +23,8 @@ Production is live and the parents depend on it.
   are injected at runtime from env: `APP_NAME`, `BABY_NAME`, `USER_NAMES`,
   `BABY_SEX`, `BIRTH_DATE`).
 - Before every commit, audit: grep the tree for the real values from `.env`
-  (names, app name, emails, birth year, secret) across `*.js`, `*.md`,
-  `*.html` - expect zero hits in committable files - and eyeball `git add -n`
+  (names, app name, emails, birth year, secret)   across `*.js`, `*.md`,
+  `*.html`, `*.yml` - expect zero hits in committable files - and eyeball `git add -n`
   output for unexpected files.
 - Anonymous requests must never receive personal data: `/api/config` returns
   only `{user:null}` pre-auth, the manifest returns a generic name without a
@@ -31,6 +32,10 @@ Production is live and the parents depend on it.
   these properties when touching auth or adding endpoints.
 - Anything published (README, issues, demos) must use a fully synthetic
   instance, never the real one - see the `baby-tracker-publishing` skill.
+- The Anthropic federation, organization, workspace and service-account IDs
+  in `.github/workflows/docs-check.yml` are intentionally committed: they are
+  identifiers, not credentials, and the Console rule (this repo, pull_request
+  runs, owner pinned by numeric ID) is what restricts their use.
 
 ## Workflow
 
