@@ -10,6 +10,10 @@ import { tempDataDir, baseEnv } from './helpers.js'
 let dataDir, push, dbm
 before(async () => {
   dataDir = tempDataDir()
+  // The developer's shell may export real keys; none may reach push.js.
+  for (const k of ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'ANTHROPIC_API_KEY', 'TRANSCRIBE_API_KEY', 'VOICE_TOKEN']) delete process.env[k]
+  // Relies on node --test running each file in its own process (the default);
+  // do not switch to --test-isolation=none, the env mutation would leak.
   Object.assign(process.env, baseEnv(dataDir), { NUDGE_HOURS: '6', RENUDGE_MINUTES: '60' })
   dbm = await import('../server/db.js')
   push = await import('../server/push.js')
@@ -79,7 +83,7 @@ test('a new feed after a nudge resets the clock', async () => {
   assert.equal(dbm.getMeta('last_nudge_at'), now.toISOString(), 'no second nudge')
 })
 
-test('photo nudges are disabled by config in this harness and stay silent', async () => {
+test('photo nudge config gates (PHOTO_NUDGE_DAYS=0, MONTHLY_PHOTO_NUDGE=0) keep them silent', async () => {
   reset()
   await push.checkPhotoNudge(new Date())
   assert.equal(dbm.getMeta('photo_nudge_stale_sent'), null)

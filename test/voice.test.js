@@ -40,6 +40,6 @@ test('with VOICE_TOKEN set: bad bearer is 401 and an unknown parent is 400, both
     const who = await v.api('POST', '/api/voice', { headers: { authorization: 'Bearer shortcut-token' }, body: { text: 'x', user: 'Nobody' } })
     assert.equal(who.status, 400)
   } finally {
-    v.stop()
+    await v.stop()
   }
 })

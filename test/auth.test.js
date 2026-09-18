@@ -110,7 +110,10 @@ test('every /api route the server registers is covered by the auth-boundary list
   const fs = await import('node:fs')
   const { ROOT } = await import('./helpers.js')
   const src = fs.readFileSync(`${ROOT}/server/index.js`, 'utf8')
-  const registered = [...src.matchAll(/app\.(get|post|patch|delete)\('(\/api\/[^']+)'/g)].map((m) => m[2])
+  // Any verb, any quote style, and app.use/app.all/app.route, so a new route
+  // cannot slip past this guard by being written differently.
+  const registered = [...src.matchAll(/app\.(get|post|put|patch|delete|all|use|route)\(\s*["'`](\/api\/[^"'`]+)["'`]/g)].map((m) => m[2])
+  assert.ok(registered.length >= 20, `route scan looks broken: found ${registered.length}`)
   const known = new Set([...PROTECTED.map(([, u]) => u.replace(/\/1\b/, '/:id')), '/api/health', '/api/login', '/api/config', '/api/voice'])
   const missing = registered.filter((u) => !known.has(u))
   assert.deepEqual(missing, [], 'add new /api routes to PROTECTED or the public allowlist')

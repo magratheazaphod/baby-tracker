@@ -83,8 +83,13 @@ export async function startServer(extraEnv = {}) {
   }
 
   function stop() {
-    child.kill('SIGTERM')
-    fs.rmSync(dataDir, { recursive: true, force: true })
+    return new Promise((resolve) => {
+      child.once('exit', () => {
+        fs.rmSync(dataDir, { recursive: true, force: true })
+        resolve()
+      })
+      child.kill('SIGTERM')
+    })
   }
 
   return { base, api, login, stop, dataDir, stderr: () => stderr }

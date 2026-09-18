@@ -22,15 +22,25 @@ function recentLocalDay(daysAgo) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 }
 
+// Chicago is UTC-5 in summer and UTC-6 in winter. Build a timestamp with the
+// offset that actually applies on that date, so the suite passes year-round.
+function local(day, hhmm) {
+  const probe = new Date(`${day}T${hhmm}:00Z`)
+  const part = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', timeZoneName: 'longOffset' })
+    .formatToParts(probe).find((x) => x.type === 'timeZoneName').value // e.g. GMT-05:00
+  const offset = part === 'GMT' ? '+00:00' : part.slice(3)
+  return `${day}T${hhmm}:00${offset}`
+}
+
 test('daily report groups by HOME_TZ day, not UTC day', async () => {
   const day = recentLocalDay(5) // YYYY-MM-DD in Chicago
   const next = recentLocalDay(4)
-  // 23:30 Chicago (CDT = UTC-5) is 04:30 UTC the next calendar day.
-  await post({ type: 'formula', amount_ml: 100, occurred_at: `${day}T23:30:00-05:00` })
+  // 23:30 Chicago is the next calendar day in UTC.
+  await post({ type: 'formula', amount_ml: 100, occurred_at: local(day, '23:30') })
   // 00:30 Chicago the following day.
-  await post({ type: 'formula', amount_ml: 50, occurred_at: `${next}T00:30:00-05:00` })
-  await post({ type: 'diaper', kind: 'both', occurred_at: `${day}T23:45:00-05:00` })
-  await post({ type: 'breastfeed', duration_min: 20, occurred_at: `${day}T08:00:00-05:00` })
+  await post({ type: 'formula', amount_ml: 50, occurred_at: local(next, '00:30') })
+  await post({ type: 'diaper', kind: 'both', occurred_at: local(day, '23:45') })
+  await post({ type: 'breastfeed', duration_min: 20, occurred_at: local(day, '08:00') })
 
   const r = await s.api('GET', '/api/reports/daily?days=10', { cookie })
   assert.equal(r.status, 200, r.text)
@@ -47,9 +57,9 @@ test('daily report groups by HOME_TZ day, not UTC day', async () => {
 
 test('daily report separates breastmilk bottles from the bottle total', async () => {
   const day = recentLocalDay(2)
-  await post({ type: 'formula', amount_ml: 80, kind: 'breastmilk', occurred_at: `${day}T12:00:00-05:00` })
-  await post({ type: 'formula', amount_ml: 70, kind: 'formula', occurred_at: `${day}T13:00:00-05:00` })
-  await post({ type: 'pump', amount_ml: 90, occurred_at: `${day}T14:00:00-05:00` })
+  await post({ type: 'formula', amount_ml: 80, kind: 'breastmilk', occurred_at: local(day, '12:00') })
+  await post({ type: 'formula', amount_ml: 70, kind: 'formula', occurred_at: local(day, '13:00') })
+  await post({ type: 'pump', amount_ml: 90, occurred_at: local(day, '14:00') })
   const r = await s.api('GET', '/api/reports/daily?days=10', { cookie })
   const d = r.json.days.find((x) => x.date === day)
   assert.equal(d.formulaMl, 150)
