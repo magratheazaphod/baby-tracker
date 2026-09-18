@@ -44,10 +44,15 @@ private volume, and photos are only served behind login.
 
 ```sh
 npm install
-npm run make-icons   # once, generates public/icons/*.png
-cp .env.example .env # optional — every key has a usable dev default
+cp .env.example .env # optional - every key has a usable dev default
 npm start            # http://localhost:3000
+npm test             # API test suite, no config needed
 ```
+
+A fresh clone boots with no other setup: the data directory and push keys
+are created on first start, and the startup banner lists which optional
+features are on. (`npm run make-icons` only regenerates the committed app
+icon.)
 
 Configuration is read from `.env`; `.env.example` documents every key, and the
 table at the bottom of this file has the full reference. The default login
@@ -204,7 +209,7 @@ Shortcut.
 | `PHOTO_NUDGE_DAYS` | `3` | nudge for a photo after this many days with none; `0` disables |
 | `MONTHLY_PHOTO_NUDGE` | `1` | monthly-birthday photo nudge (needs `BIRTH_DATE`); `0` disables |
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated in dev | web-push credentials |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated, persisted in `DATA_DIR` | web-push credentials; set only to survive a data wipe |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
 | `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
 | `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging — see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
