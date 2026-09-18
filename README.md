@@ -13,6 +13,11 @@ third-party services unless you opt into the AI extras below.
 and want their child's data on a machine they control. It is deliberately
 single-family: two named caregivers, one baby, one shared secret.
 
+**Not goals:** accounts or multi-family hosting, a native app, non-US
+immunization or milestone schedules (the checklists are CDC/ACIP data files
+and can be swapped), and translated UI. Issues asking for these will be
+closed with a pointer here; forks are welcome.
+
 ## Features
 
 - **Home** - baby's age, latest weight and percentile, milestone progress,
@@ -261,3 +266,11 @@ See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) for both.
 | `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
 | `TRANSCRIBE_API_KEY` / `TRANSCRIBE_URL` / `TRANSCRIBE_MODEL` | unset / Groq / `whisper-large-v3-turbo` | speech-to-text for the in-app mic button; unset hides the button |
 | `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging - see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
+
+## License
+
+MIT - see [LICENSE](LICENSE). The WHO growth standards, CDC milestone
+checklist and CDC/ACIP immunization schedule bundled under `public/` are
+public reference data from their respective publishers, not covered by this
+license. Screenshots under `docs/screenshots/` are synthetic demo captures
+and may be reused under the same MIT terms.
