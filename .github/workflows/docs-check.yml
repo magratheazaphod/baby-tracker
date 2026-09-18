@@ -65,7 +65,7 @@ jobs:
           claude_args: >-
             --model claude-haiku-4-5
             --allowedTools "Read,Grep,Glob,mcp__github_comment__update_claude_comment"
-            --max-turns 15
+            --max-turns 30
           prompt: |
             You are the documentation reviewer for this pull request.
 
