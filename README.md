@@ -83,10 +83,15 @@ private volume, and photos are only served behind login.
 
 ```sh
 npm install
-npm run make-icons   # once, generates public/icons/*.png
 cp .env.example .env # optional - every key has a usable dev default
 npm start            # http://localhost:3000
+npm test             # API test suite, no config needed
 ```
+
+A fresh clone boots with no other setup: the data directory and push keys
+are created on first start, and the startup banner lists which optional
+features are on. (`npm run make-icons` only regenerates the committed app
+icon.)
 
 Configuration is read from `.env`; `.env.example` documents every key, and the
 table at the bottom of this file has the full reference. The default login
@@ -118,6 +123,41 @@ diapers, weekly growth measurements and milestones from a seeded PRNG, so
 re-running it reproduces the same screenshots. It refuses to write to a live
 `DATA_DIR`, and `--env-file=` (rather than `npm start`) keeps your real
 `.env` out of the demo process.
+
+## Deploying anywhere (Docker)
+
+A prebuilt multi-arch image is published to GitHub Container Registry on
+every release, so a Raspberry Pi, a home server or any VPS with Docker can
+run the app without compiling anything.
+
+```sh
+git clone https://github.com/magratheazaphod/baby-tracker && cd baby-tracker
+# (or just download docker-compose.yml and .env.example into an empty folder)
+cp .env.example .env   # set APP_SECRET, USER_NAMES, BABY_NAME, BIRTH_DATE,
+                       # BABY_SEX and HOME_TZ at minimum
+docker compose up -d
+curl -s http://127.0.0.1:3000/api/health   # {"ok":true}
+```
+
+The app binds to localhost only, because the "Add to Home Screen" install
+flow and Web Push notifications both require HTTPS. Put a reverse proxy with
+automatic certificates in front of it. A ready-made Caddy setup is included:
+point DNS at the host, replace `tracker.example.com` in
+[`deploy/caddy/Caddyfile`](deploy/caddy/Caddyfile), then
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
+```
+
+Traefik, nginx or a Cloudflare tunnel work just as well; proxy to port 3000.
+
+Then on each phone: open the app URL in Safari → Share → **Add to Home
+Screen** → open it from the home screen → log in → tap 🔔 to enable nudges.
+
+The named `data` volume holds the SQLite database and every photo. Back it up
+the same way as any other install: `GET /api/export` or `scripts/backup.sh`
+(see [Backups](#backups)). To upgrade, `docker compose pull && docker compose
+up -d`; schema migrations run automatically at startup.
 
 ## Deploying to Fly.io
 
@@ -216,7 +256,7 @@ See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) for both.
 | `MONTHLY_PHOTO_NUDGE` | `1` | monthly-birthday photo nudge (needs `BIRTH_DATE`); `0` disables |
 | `PORT` | `3000` | port the server listens on |
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated in dev | web-push credentials |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated, persisted in `DATA_DIR` | web-push credentials; set only to survive a data wipe |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
 | `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
 | `TRANSCRIBE_API_KEY` / `TRANSCRIBE_URL` / `TRANSCRIBE_MODEL` | unset / Groq / `whisper-large-v3-turbo` | speech-to-text for the in-app mic button; unset hides the button |
