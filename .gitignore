@@ -6,3 +6,5 @@ data/
 fly.toml
 # Scratch worktrees created by tooling.
 .claude/worktrees/
+# Written by the docs-check workflow on CI runners; never meant to be committed.
+pr.diff

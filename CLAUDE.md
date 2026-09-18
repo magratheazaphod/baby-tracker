@@ -3,7 +3,9 @@
 A self-hosted baby-tracking PWA two parents use from iPhones. One Node.js
 process (Express + better-sqlite3) serves a no-build vanilla-JS frontend, owns
 SQLite + photos on a Fly.io volume, and runs a push-notification nudge timer.
-No framework, no bundler, no test suite (yet) - verification is manual.
+No framework, no bundler, no test suite (yet) - functional verification is
+manual. The one CI job is a documentation-accuracy check that comments on
+each PR (`.github/workflows/docs-check.yml`); it never pushes.
 
 Production is live and the parents depend on it.
 
@@ -34,6 +36,11 @@ Production is live and the parents depend on it.
 
 - Work on a branch and open a PR. `main` is what's deployed - never push to it
   directly.
+- Every non-draft, same-repo PR gets an automated docs-accuracy comment from
+  Claude: it audits README, CLAUDE.md, `.env.example`, `fly.toml.example` and
+  `docs/*` against the diff. Comment-only (one sticky comment, no commits);
+  authenticates via workload identity federation, so there is no repository
+  secret to rotate.
 - Deploying and the backup pipeline: `baby-tracker-ops` skill.
 - Screenshots, demo data, anything published: `baby-tracker-publishing` skill.
 - Agreed next steps: `docs/roadmap.md`.
@@ -82,6 +89,9 @@ assumption, so the app can flex as the family's needs change.
   deliberate: it's what US pediatricians use under age 2 - parents compare the
   app's percentiles to doctor visits.
 - `public/sw.js` - network-first service worker + push/notificationclick.
+- `.github/workflows/docs-check.yml` - PR-time docs-accuracy agent. Read-only
+  tools plus the PR-comment tool; a prior step writes the diff to `pr.diff`
+  so the agent needs no shell.
 
 ## Key patterns
 

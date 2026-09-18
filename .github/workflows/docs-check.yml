@@ -55,8 +55,11 @@ jobs:
           anthropic_service_account_id: svac_01An3agFDx9UyA8zSty2Tp3y
           anthropic_workspace_id: wrkspc_01UYVVjvFjUgLiKEkxuoqn1D
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # A prompt alone runs the action in "agent" mode, which never creates
+          # the comment the comment tool updates. track_progress forces the
+          # tracking-comment mode and appends our prompt as custom instructions.
+          track_progress: true
           use_sticky_comment: true
-          show_full_output: true  # temporary, for diagnosing the federation exchange
           claude_args: >-
             --allowedTools "Read,Grep,Glob,mcp__github_comment__update_claude_comment"
             --max-turns 15
