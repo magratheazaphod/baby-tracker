@@ -23,9 +23,9 @@ Production is live and the parents depend on it.
   are injected at runtime from env: `APP_NAME`, `BABY_NAME`, `USER_NAMES`,
   `BABY_SEX`, `BIRTH_DATE`).
 - Before every commit, audit: grep the tree for the real values from `.env`
-  (names, app name, emails, birth year, secret)   across `*.js`, `*.md`,
-  `*.html`, `*.yml` - expect zero hits in committable files - and eyeball `git add -n`
-  output for unexpected files.
+  (names, app name, emails, birth year, secret) across `*.js`, `*.md`,
+  `*.html`, `*.yml` - expect zero hits in committable files - and eyeball
+  `git add -n` output for unexpected files.
 - Anonymous requests must never receive personal data: `/api/config` returns
   only `{user:null}` pre-auth, the manifest returns a generic name without a
   login cookie, login is two-step (secret proven → names revealed). Preserve
