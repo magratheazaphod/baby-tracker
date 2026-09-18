@@ -327,7 +327,7 @@ function openSheet(type, { kind, existing, prefill } = {}) {
       </div>
       <div id="weight-lb" class="${unit === 'lb' ? '' : 'hidden'}" style="display:${unit === 'lb' ? 'flex' : 'none'};gap:10px">
         <label style="flex:1">Pounds<input type="number" name="lb" inputmode="numeric" min="0" step="1" value="${lb}"></label>
-        <label style="flex:1">Ounces<input type="number" name="oz" inputmode="decimal" min="0" max="15.9" step="0.1" value="${oz}"></label>
+        <label style="flex:1">Ounces<input type="number" name="oz" inputmode="decimal" min="0" max="15.9" step="any" value="${oz}"></label>
       </div>
       <label id="weight-kg" style="display:${unit === 'kg' ? 'flex' : 'none'}">Kilograms<input type="number" name="kg" inputmode="decimal" min="0" step="0.001" value="${g ? (g / 1000).toFixed(3) : ''}"></label>
       ${fieldNotes(existing?.notes)}`
@@ -340,7 +340,7 @@ function openSheet(type, { kind, existing, prefill } = {}) {
         <button type="button" data-unit="in">inches</button>
         <button type="button" data-unit="cm">cm</button>
       </div>
-      <label><span>Height (<span id="hunit-label">${unit}</span>)</span><input type="number" name="height" inputmode="decimal" min="0" step="0.1" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
+      <label><span>Height (<span id="hunit-label">${unit}</span>)</span><input type="number" name="height" inputmode="decimal" min="0" step="any" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'head') {
     const unit = localStorage.getItem('headUnit') || 'cm'
@@ -351,7 +351,7 @@ function openSheet(type, { kind, existing, prefill } = {}) {
         <button type="button" data-unit="in">inches</button>
         <button type="button" data-unit="cm">cm</button>
       </div>
-      <label><span>Head circumference (<span id="headunit-label">${unit}</span>)</span><input type="number" name="head" inputmode="decimal" min="0" step="0.1" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
+      <label><span>Head circumference (<span id="headunit-label">${unit}</span>)</span><input type="number" name="head" inputmode="decimal" min="0" step="any" value="${cm ? (unit === 'cm' ? cm.toFixed(1) : (cm / 2.54).toFixed(1)) : ''}" required></label>
       ${fieldNotes(existing?.notes)}`
   } else if (type === 'photo') {
     fields = `${fieldTime(timeVal)}
