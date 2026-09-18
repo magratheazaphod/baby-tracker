@@ -60,7 +60,10 @@ jobs:
           # tracking-comment mode and appends our prompt as custom instructions.
           track_progress: true
           use_sticky_comment: true
+          # Haiku: this is a read-and-compare task, and at $1/$5 per million
+          # tokens a run costs roughly 15 cents versus 70 on the default Opus.
           claude_args: >-
+            --model claude-haiku-4-5
             --allowedTools "Read,Grep,Glob,mcp__github_comment__update_claude_comment"
             --max-turns 15
           prompt: |
