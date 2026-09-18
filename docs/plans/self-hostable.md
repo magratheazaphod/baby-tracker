@@ -11,20 +11,26 @@ a Dockerfile, `fly.toml.example`, `/api/health`, a three-layer backup story,
 a synthetic demo seeder and anonymized screenshots. The architecture does not
 need to change; the remaining work is packaging, trust signals and docs.
 
-## What blocks a stranger today
+## What blocked a stranger on 2026-09-17 (status as of 2026-09-18)
 
-- No license file, so nobody may legally use or fork it.
-- Fly is the only documented deploy path. Self-hosters expect
-  `docker compose up` behind Caddy/Traefik; push and PWA install need HTTPS.
-- First boot needs manual steps (`npm run make-icons`, VAPID key generation).
-- No tests, no CI - nothing signals "maintained software" to a reviewer.
-- README still describes the newborn-era app; gallery, growth, milestones,
-  vaccines and voice logging are absent from the intro and screenshots.
-- Design scope (two caregivers, one baby, CDC/US schedules, English) is
-  implicit rather than stated.
-- Heavy required deps (`sharp`, Anthropic SDK) even when the feature is off;
-  `sharp` builds are a known self-host support headache on ARM.
-- No tags, changelog, or stated upgrade/migration behaviour.
+- No license file, so nobody may legally use or fork it. **Open** (license
+  decision pending).
+- Fly was the only documented deploy path. **Done** in #26: docker-compose,
+  Caddy overlay, GHCR image published on tags.
+- First boot needed manual steps (`npm run make-icons`, VAPID key
+  generation). **Done** in #25: both were already automatic; docs fixed,
+  startup banner added, production refuses the default secret.
+- No tests, no CI. **Done** in #22 (70-test API suite, CI on every PR) and
+  #24 (per-PR docs-accuracy check).
+- README described the newborn-era app. **Text done** in #23; fresh
+  screenshots, CHANGELOG and the `v1.0.0` tag remain.
+- Design scope (two caregivers, one baby, CDC/US schedules, English) was
+  implicit. **Partly done**: README has a "who it is for" line; the formal
+  "Not goals" section lands with the license PR.
+- Heavy required deps (`sharp`, Anthropic SDK) even when the feature is off.
+  **Mitigated** by the prebuilt image; making them optional stays deferred.
+- No tags, changelog, or stated upgrade/migration behaviour. **Open**, part
+  of step 5.
 
 ## Plan - one PR per step
 
