@@ -1,16 +1,52 @@
 # Baby Tracker
 
-A tiny self-hosted PWA for two parents to track a newborn: breastfeeding,
-formula (ml), diapers, weight, and timestamped photos — with day-by-day
-reports and a push-notification nudge if nothing has been logged for a while.
+A self-hosted PWA two caregivers use from their phones to track one baby,
+from the newborn weeks (feeds, diapers, sleep, a push nudge when nothing has
+been logged) through the first two years (growth percentiles, a photo
+gallery, CDC milestone and vaccination checklists).
 
 One Node.js process serves the app, owns a SQLite database, stores photos on
-disk, and runs the nudge checker. No accounts, no third-party services.
+disk, and runs the notification timers. No accounts, no analytics, no
+third-party services unless you opt into the AI extras below.
+
+**Who it is for:** technical parents who can run a Docker image or a Fly app
+and want their child's data on a machine they control. It is deliberately
+single-family: two named caregivers, one baby, one shared secret.
+
+## Features
+
+- **Home** - baby's age, latest weight and percentile, milestone progress,
+  and quick access to everything else. A classic Log-first layout is one
+  toggle away for the newborn phase.
+- **Logging** - breastfeeding, bottle (formula or expressed milk, in mL),
+  pumping, diapers, weight, height, head circumference, milestones,
+  vaccinations and photos. Diapers save in one tap; the bottle sheet
+  pre-fills from the last bottle. Every timestamp is editable.
+- **Growth** - weight, height and head-circumference charts plotted against
+  the WHO 0-24 month standards (the ones US pediatricians use under age 2),
+  with percentiles computed from the LMS tables for the baby's sex.
+- **Checklists** - the CDC "Learn the Signs. Act Early." milestone list,
+  bracketed by age off the birth date, and the CDC/ACIP immunization schedule
+  with due and overdue badges. Tapping an item opens a pre-filled sheet;
+  saving it records the milestone or shot as an event in the timeline.
+- **Photos** - a gallery grouped by baby-month with monthly-birthday badges,
+  thumbnails generated on demand, and push nudges (on by default, each with
+  its own off switch, daytime only) when the gallery goes stale or a
+  month-iversary arrives.
+- **Timeline and Reports** - reverse-chronological entries filterable by
+  type; daily feeding, diaper, pumping and appetite charts; an inferred
+  sleep-cycle view built from the gaps between feeds.
+- **Push notifications** - a feed nudge after N quiet hours (on by default
+  at 6h; set `NUDGE_HOURS=0` to switch it off once the newborn phase passes)
+  plus the photo nudges above. Web Push, no vendor account needed.
+- **Voice logging** (optional) - an in-app microphone button and a Siri
+  Shortcut, both parsed by Claude, in English or Mandarin.
+- **Backups** - a one-request tar.gz export of the database and photos.
 
 ## Screenshots
 
 > **All screenshots are anonymized.** Every name, date, and measurement shown
-> is synthetic — they come from a throwaway database seeded by
+> is synthetic - they come from a throwaway database seeded by
 > `scripts/seed-demo-data.js` and a demo-only config, never from a real
 > family's data. See [Demo data](#demo-data-for-screenshots).
 
@@ -33,11 +69,14 @@ disk, and runs the nudge checker. No accounts, no third-party services.
   </tr>
 </table>
 
+The screenshots show the classic Log-first layout; the Home, Photos, Growth
+and Checklists views are newer and not yet pictured.
+
 ## Privacy
 
 This repo is public; **no personal data lives in it**. Names, emails, and the
-shared login secret are supplied via environment variables (`.env` locally —
-gitignored — or Fly secrets in production). The database and photos live on a
+shared login secret are supplied via environment variables (`.env` locally -
+gitignored - or Fly secrets in production). The database and photos live on a
 private volume, and photos are only served behind login.
 
 ## Local development
@@ -61,7 +100,7 @@ secret in dev is `baby`.
 ### Demo data (for screenshots)
 
 The screenshots above were produced from a disposable instance with an
-entirely synthetic database — no real data is involved at any point:
+entirely synthetic database - no real data is involved at any point:
 
 ```sh
 SCRATCH=/tmp/bt-demo && mkdir -p $SCRATCH
@@ -146,15 +185,15 @@ Screen** → open it from the home screen → log in → tap 🔔 to enable nudg
 
 `GET /api/health` returns `{"ok":true}` when the app is up and its database is
 readable, and `503` otherwise. It runs a one-row SQLite query rather than just
-confirming the process is alive — a machine whose volume failed to mount will
+confirming the process is alive - a machine whose volume failed to mount will
 happily serve pages while every real request fails. It requires no login and
 returns nothing personal, so it is safe to point a public monitor at.
 
 Two things should watch it:
 
-1. **Fly** — `fly.toml.example` includes an `[[http_service.checks]]` block that
+1. **Fly** - `fly.toml.example` includes an `[[http_service.checks]]` block that
    polls it every 30s and restarts the machine when it fails.
-2. **An external uptime monitor** — [UptimeRobot](https://uptimerobot.com) or
+2. **An external uptime monitor** - [UptimeRobot](https://uptimerobot.com) or
    [Healthchecks.io](https://healthchecks.io), free tier, pointed at
    `https://your-app.fly.dev/api/health`. This is the one that actually reaches
    you: if the machine or the whole region is down, Fly's internal check has no
@@ -168,13 +207,13 @@ curl -s https://your-app.fly.dev/api/health   # {"ok":true}
 
 Three layers:
 
-1. **Fly volume snapshots** — automatic, daily, 30-day retention
+1. **Fly volume snapshots** - automatic, daily, 30-day retention
    (`fly volumes update <vol-id> --snapshot-retention 30`). Restore with
    `fly volumes create data --snapshot-id <id>`.
-2. **Off-site export** — `GET /api/export` streams a tar.gz of the SQLite
+2. **Off-site export** - `GET /api/export` streams a tar.gz of the SQLite
    database + all photos. Authenticated by login cookie or
    `Authorization: Bearer <APP_SECRET>`.
-3. **Pull script** — `scripts/backup.sh` downloads an export and keeps the
+3. **Pull script** - `scripts/backup.sh` downloads an export and keeps the
    newest 30 locally:
    ```sh
    APP_URL=https://your-app.fly.dev APP_SECRET=... ./scripts/backup.sh
@@ -183,33 +222,42 @@ Three layers:
 
 ## Voice logging (optional)
 
-`POST /api/voice` takes a dictated sentence in English or Mandarin, parses it
-with Claude, saves the events, and returns a short spoken confirmation — so a
-parent can say "Hey Siri, Log Baby" and log a feed without touching anything.
-It needs `ANTHROPIC_API_KEY` plus its own `VOICE_TOKEN`
-(`fly secrets set -a your-app-name --stage VOICE_TOKEN="..."`, then deploy);
-with `VOICE_TOKEN` unset the endpoint is off. The token is deliberately
-separate from `APP_SECRET` and can only create events, never read or export.
-See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) to build the
-Shortcut.
+Two ways to log by voice, both parsed by Claude and both off unless you set
+the keys:
+
+- **In-app microphone button** - needs `ANTHROPIC_API_KEY` plus
+  `TRANSCRIBE_API_KEY` for speech-to-text (any OpenAI-compatible
+  `/v1/audio/transcriptions` endpoint; Groq by default). The button appears
+  as soon as the transcription key is set, so set both or every attempt
+  fails. Handles English, Mandarin, and sentences that switch between them.
+- **Siri Shortcut** - `POST /api/voice` takes a dictated sentence, saves the
+  events, and returns a spoken confirmation, so "Hey Siri, Log Baby" works
+  hands-free. Needs `ANTHROPIC_API_KEY` plus its own `VOICE_TOKEN`
+  (`fly secrets set -a your-app-name --stage VOICE_TOKEN="..."`, then
+  deploy). The token is deliberately separate from `APP_SECRET` and can only
+  create events, never read or export.
+
+See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) for both.
 
 ## Environment variables
 
 | Var | Default | Purpose |
 |---|---|---|
-| `APP_SECRET` | `baby` (dev only) | shared login secret — set a real one in prod |
+| `APP_SECRET` | `baby` (dev only) | shared login secret - set a real one in prod |
 | `USER_NAMES` | `Mom,Dad` | comma-separated parent names shown at login |
 | `BABY_NAME` | `Baby` | baby's name (private, env-only) |
 | `APP_NAME` | falls back to `BABY_NAME` | app title + home-screen name |
 | `BIRTH_DATE` | unset | baby's birth date (YYYY-MM-DD); enables growth percentiles |
 | `BABY_SEX` | unset | `boy` or `girl`; selects the WHO growth-standards table |
 | `HOME_TZ` | `America/Los_Angeles` | day boundaries for reports |
-| `NUDGE_HOURS` | `6` | push a nudge after this many hours with no entries |
+| `NUDGE_HOURS` | `6` | push a nudge after this many hours with no entries; `0` disables |
 | `RENUDGE_MINUTES` | `60` | re-nudge interval while still quiet |
 | `PHOTO_NUDGE_DAYS` | `3` | nudge for a photo after this many days with none; `0` disables |
 | `MONTHLY_PHOTO_NUDGE` | `1` | monthly-birthday photo nudge (needs `BIRTH_DATE`); `0` disables |
+| `PORT` | `3000` | port the server listens on |
 | `DATA_DIR` | `./data` | where SQLite + photos live (`/data` on Fly) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | auto-generated, persisted in `DATA_DIR` | web-push credentials; set only to survive a data wipe |
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
 | `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
-| `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging — see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
+| `TRANSCRIBE_API_KEY` / `TRANSCRIBE_URL` / `TRANSCRIBE_MODEL` | unset / Groq / `whisper-large-v3-turbo` | speech-to-text for the in-app mic button; unset hides the button |
+| `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging - see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
