@@ -38,6 +38,10 @@ Production is live and the parents depend on it.
   of `LICENSE`, as required by the MIT text and the owner's licensing policy.
   It is the public GitHub account holder's name, not the other parent's or the
   baby's, and the privacy grep will hit it; that hit is expected.
+- The public demo (`baby-tracker-demo`, config in `deploy/fly.demo.toml`)
+  is a separate Fly app with only synthetic data and is meant to be linked
+  from the README. The rule about never committing the deployed app name or
+  URL applies to the family's instance, not the demo.
 - The Anthropic federation, organization, workspace and service-account IDs
   in `.github/workflows/docs-check.yml` are intentionally committed: they are
   identifiers, not credentials, and the Console rule (this repo, pull_request
