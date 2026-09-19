@@ -33,5 +33,5 @@ check (PR #24).
 Package the app so technical parents can install it themselves. Six PRs:
 license + scope (#29, done), zero-config first boot (#25,
 done), docker-compose path + GHCR image (#26, done), test suite + CI (#22,
-done), README rewrite (#23, text done; screenshots + v1.0.0 tag remain),
+done), README rewrite + screenshots + v1.0.0 (done),
 hosted demo for the portfolio. Details in `docs/plans/self-hostable.md`.

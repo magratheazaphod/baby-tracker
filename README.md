@@ -50,32 +50,37 @@ closed with a pointer here; forks are welcome.
 
 ## Screenshots
 
-> **All screenshots are anonymized.** Every name, date, and measurement shown
-> is synthetic - they come from a throwaway database seeded by
-> `scripts/seed-demo-data.js` and a demo-only config, never from a real
+> **All screenshots are anonymized.** Every name, date, measurement and photo
+> shown is synthetic: they come from a throwaway database seeded by
+> `scripts/seed-demo-data.js` plus placeholder images, never from a real
 > family's data. See [Demo data](#demo-data-for-screenshots).
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/log.png" alt="Log view: one-tap buttons for breastfeeding, bottle, diapers, height, weight and head circumference" width="100%"></td>
-    <td width="50%"><img src="docs/screenshots/timeline.png" alt="Timeline view: reverse-chronological entries grouped by day, filterable by type" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/home.png" alt="Home view: baby's age, latest weight with percentile, milestone progress, and recent entries" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/growth.png" alt="Growth view: weight, height and head-circumference percentiles with WHO curve charts" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/checklists.png" alt="Checklists view: CDC milestone list by age bracket with checked and unchecked items" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/vaccines.png" alt="Vaccines tab: CDC/ACIP immunization schedule grouped by visit with completed doses" width="100%"></td>
   </tr>
   <tr>
-    <td align="center"><b>Log</b></td>
+    <td align="center"><b>Home</b></td>
+    <td align="center"><b>Growth</b></td>
+    <td align="center"><b>Milestones</b></td>
+    <td align="center"><b>Vaccines</b></td>
+  </tr>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/photos.png" alt="Photos view: gallery grouped by baby-month with monthly-shot badges" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/timeline.png" alt="Timeline view: reverse-chronological entries grouped by day, filterable by type" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/reports-feeding.png" alt="Reports view: daily breastfeeding minutes and bottle volume split by formula and breast milk" width="100%"></td>
+    <td width="25%"><img src="docs/screenshots/sleep.png" alt="Sleep cycle view: per-day timeline of inferred asleep and awake stretches" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Photos</b></td>
     <td align="center"><b>Timeline</b></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/reports-feeding.png" alt="Reports view: stacked bar chart of daily bottle volume split by formula and breast milk" width="100%"></td>
-    <td width="50%"><img src="docs/screenshots/sleep.png" alt="Sleep cycle view: per-day timeline of inferred asleep and awake stretches" width="100%"></td>
-  </tr>
-  <tr>
     <td align="center"><b>Reports</b></td>
     <td align="center"><b>Sleep cycle</b></td>
   </tr>
 </table>
-
-The screenshots show the classic Log-first layout; the Home, Photos, Growth
-and Checklists views are newer and not yet pictured.
 
 ## Privacy
 
