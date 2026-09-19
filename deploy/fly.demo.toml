@@ -1,0 +1,40 @@
+# Fly config for the public read-only demo instance. Deploy with:
+#   fly deploy -c deploy/fly.demo.toml --ha=false
+# The app name is public by design (it is the demo). Its secrets are all
+# synthetic (see docs/plans/self-hostable.md, step 6): DEMO_MODE=1 blocks
+# every write and the export; DEMO_RESEED=1 regenerates the synthetic data
+# on each deploy; no AI, transcription, voice or push keys are set.
+app = "baby-tracker-demo"
+primary_region = "ord"
+
+[build]
+
+[env]
+  DATA_DIR = "/data"
+  HOME_TZ = "America/Los_Angeles"
+  NUDGE_HOURS = "0"
+  PHOTO_NUDGE_DAYS = "0"
+  MONTHLY_PHOTO_NUDGE = "0"
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # A demo can sleep when idle; it has no nudge timer to keep alive.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
