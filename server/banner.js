@@ -5,7 +5,7 @@ import path from 'node:path'
 
 const on = (v) => (v ? 'on' : 'off')
 
-export function printBanner({ port, homeTz, dataDir, appName, vapidSource }) {
+export function printBanner({ port, homeTz, dataDir, appName, vapidSource, demo = false }) {
   const env = process.env
   const nudgeHours = Number(env.NUDGE_HOURS || 6)
   const photoNudges = Number(env.PHOTO_NUDGE_DAYS ?? 3) > 0 || env.MONTHLY_PHOTO_NUDGE !== '0'
@@ -15,9 +15,10 @@ export function printBanner({ port, homeTz, dataDir, appName, vapidSource }) {
     `  timezone   ${homeTz}`,
     `  data       ${path.resolve(dataDir)}`,
     `  push       on (VAPID keys: ${vapidSource})`,
-    `  nudges     feed ${nudgeHours > 0 ? `after ${nudgeHours}h` : 'off'}, photo ${on(photoNudges)}`,
+    demo ? '  nudges     off (demo)' : `  nudges     feed ${nudgeHours > 0 ? `after ${nudgeHours}h` : 'off'}, photo ${on(photoNudges)}`,
     `  growth     ${growth ? 'percentiles on' : 'percentiles off (set BIRTH_DATE and BABY_SEX)'}`,
     `  ai         diaper analysis ${on(env.ANTHROPIC_API_KEY)}, in-app mic ${on(env.TRANSCRIBE_API_KEY)}, Siri voice ${on(env.VOICE_TOKEN)}`,
+    ...(demo ? ['  mode       READ-ONLY DEMO (writes, uploads, push and export disabled)'] : []),
   ]
   console.log(lines.join('\n'))
 }

@@ -2784,6 +2784,7 @@ async function boot() {
   $('#login').classList.add('hidden')
   $('#app').classList.remove('hidden')
   $('#whoami').textContent = cfg.user
+  if (cfg.demo) $('#demo-banner').classList.remove('hidden')
   if (localStorage.getItem('nudgesEnabled')) $('#nudge-btn').classList.add('enabled')
   // Needs both halves: a transcription key on the server and a browser that
   // can actually reach a microphone (getUserMedia needs a secure context).

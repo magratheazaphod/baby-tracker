@@ -265,6 +265,7 @@ See [docs/siri-voice-logging.md](docs/siri-voice-logging.md) for both.
 | `COOKIE_SECRET` | derived from `APP_SECRET` | cookie signing key |
 | `ANTHROPIC_API_KEY` | unset | enables the auto-generated Claude analysis of diaper photos and voice logging; without it, photos still work and analysis is skipped |
 | `TRANSCRIBE_API_KEY` / `TRANSCRIBE_URL` / `TRANSCRIBE_MODEL` | unset / Groq / `whisper-large-v3-turbo` | speech-to-text for the in-app mic button; unset hides the button |
+| `DEMO_MODE` | unset | `1` makes the instance read-only for a public demo: login and reads work, every write, upload, push and export is refused |
 | `VOICE_TOKEN` | unset | bearer token for `POST /api/voice` (hands-free Siri logging - see [docs/siri-voice-logging.md](docs/siri-voice-logging.md)); unset disables the endpoint |
 
 ## License

@@ -33,6 +33,9 @@ const COOKIE_SECRET =
   process.env.COOKIE_SECRET ||
   crypto.createHash('sha256').update(`cookie:${APP_SECRET}`).digest('hex')
 const IS_PROD = process.env.NODE_ENV === 'production' || !!process.env.FLY_APP_NAME
+// Read-only demo instance (the portfolio demo runs with a public secret).
+// Everything that writes, uploads, sends or exports is refused below.
+const DEMO_MODE = ['1', 'true'].includes(String(process.env.DEMO_MODE || '').toLowerCase())
 
 // Refuse to serve a real deployment behind the well-known dev secret. This
 // also covers COOKIE_SECRET, which is derived from APP_SECRET when unset.
@@ -60,6 +63,24 @@ app.use(express.json())
 // never bodies, names, utterances or IPs, since these lines sit in Fly's log
 // stream. /api/health is skipped — the Fly check hits it constantly and would
 // bury everything else.
+// --- demo guard ---
+//
+// One method+path check, before any route, so the blocked surface is auditable
+// in a single place: every mutating verb under /api, plus the export download.
+// Login stays open so visitors can get in; everything else they can only read.
+const DEMO_BLOCKED = (req) => {
+  if (!req.path.startsWith('/api/')) return false
+  if (req.method === 'GET') return req.path === '/api/export'
+  if (req.path === '/api/login') return false
+  return true
+}
+if (DEMO_MODE) {
+  app.use((req, res, next) => {
+    if (DEMO_BLOCKED(req)) return res.status(403).json({ error: 'Read-only demo' })
+    next()
+  })
+}
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/') || req.path === '/api/health') return next()
   const started = process.hrtime.bigint()
@@ -166,6 +187,7 @@ app.get('/api/config', (req, res) => {
     // Hides the mic button when no transcription key is configured. Safe to
     // expose: this branch is already behind a valid login cookie.
     voiceInput: transcribeConfigured(),
+    ...(DEMO_MODE ? { demo: true } : {}),
   })
 })
 
@@ -1131,6 +1153,8 @@ const server = app.listen(PORT, () =>
     dataDir: DATA_DIR,
     appName: process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker',
     vapidSource,
+    demo: DEMO_MODE,
   })
 )
-startNudgeTimer()
+// No push surface in the demo: nothing to nudge, nobody subscribed.
+if (!DEMO_MODE) startNudgeTimer()
