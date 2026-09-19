@@ -927,3 +927,15 @@ body[data-layout="classic"] #nav-classic { display: flex; }
   z-index: 40;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
+
+/* Read-only demo strip (DEMO_MODE=1 on the server). Same tokens as the rest
+   of the chrome so it resolves in both themes. */
+.demo-banner {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-bottom: 1px solid var(--hairline);
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}

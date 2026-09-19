@@ -58,9 +58,9 @@ need to change; the remaining work is packaging, trust signals and docs.
    linked from a short case study on the owner's portfolio site. Because the
    login secret will be public, it needs safeguards the code does not have
    yet:
-   - a `DEMO_MODE=1` env flag that rejects every mutating route (events,
-     photos, voice, push subscribe, re-analyze) at middleware level and
-     disables `/api/export`;
+   - **done:** a `DEMO_MODE=1` env flag that rejects every mutating route
+     (events, photos, voice, push subscribe, re-analyze) at middleware level
+     and disables `/api/export`;
    - no `ANTHROPIC_API_KEY`, `TRANSCRIBE_API_KEY`, `VOICE_TOKEN` or VAPID
      keys on that instance, so there is no paid API or push surface;
    - a Fly app name and volume unrelated to the production app;
