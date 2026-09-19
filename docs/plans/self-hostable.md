@@ -20,16 +20,17 @@ need to change; the remaining work is packaging, trust signals and docs.
 - First boot needed manual steps (`npm run make-icons`, VAPID key
   generation). **Done** in #25: both were already automatic; docs fixed,
   startup banner added, production refuses the default secret.
-- No tests, no CI. **Done** in #22 (70-test API suite, CI on every PR) and
+- No tests, no CI. **Done** in #22 (98-test API suite, CI on every PR) and
   #24 (per-PR docs-accuracy check).
-- README described the newborn-era app. **Text done** in #23; fresh
-  screenshots, CHANGELOG and the `v1.0.0` tag remain.
+- README described the newborn-era app. **Done**: text in #23, fresh
+  screenshots, CHANGELOG and the `v1.0.0` tag in the release PR.
 - Design scope (two caregivers, one baby, CDC/US schedules, English) was
   implicit. **Done**: README has "Who it is for" and "Not goals".
 - Heavy required deps (`sharp`, Anthropic SDK) even when the feature is off.
   **Mitigated** by the prebuilt image; making them optional stays deferred.
-- No tags, changelog, or stated upgrade/migration behaviour. **Open**, part
-  of step 5.
+- No tags, changelog, or stated upgrade/migration behaviour. **Done**:
+  CHANGELOG.md, `v1.0.0` tag, and the changelog notes that migrations run
+  at startup.
 
 ## Plan - one PR per step
 
