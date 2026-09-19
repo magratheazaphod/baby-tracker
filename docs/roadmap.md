@@ -19,8 +19,9 @@ due badges suffice).
 
 ## Standing items
 
-1. Extend the API test suite to the checklist, thumbnail, photo-upload and
-   photo-nudge surfaces (auth is covered; behaviour is not).
+1. Extend the API test suite to the checklist and photo-nudge surfaces
+   (auth is covered; behaviour is not). Photo upload, thumbnails, photo
+   attach/remove cleanup and the push test route are covered as of #31.
 2. Optional: store original-resolution photos (currently 1600px only).
 
 Done: /api/health + Fly http check; refresh-on-focus (duplicate-entry
