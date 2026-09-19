@@ -65,9 +65,12 @@ need to change; the remaining work is packaging, trust signals and docs.
    - no `ANTHROPIC_API_KEY`, `TRANSCRIBE_API_KEY`, `VOICE_TOKEN` or VAPID
      keys on that instance, so there is no paid API or push surface;
    - a Fly app name and volume unrelated to the production app;
-   - seeded only by `scripts/seed-demo-data.js` with the demo env from the
-     `baby-tracker-publishing` skill, re-seeded on a schedule, and never
-     from the production `.env` or a backup tarball.
+   - **done:** self-seeding. With `DEMO_MODE=1` and an empty database the
+     server generates the synthetic dataset itself at boot (the same
+     generator `scripts/seed-demo-data.js` uses, `server/demo-seed.js`),
+     including CDC milestones, ACIP vaccinations and placeholder photos;
+     `DEMO_RESEED=1` regenerates on every start so a redeploy refreshes
+     "today". Nothing is ever copied from the production `.env` or a backup.
    Everything under `docs/plans/` stays synthetic-only, like the rest of
    the repo.
 
