@@ -48,6 +48,12 @@ closed with a pointer here; forks are welcome.
   Shortcut, both parsed by Claude, in English or Mandarin.
 - **Backups** - a one-request tar.gz export of the database and photos.
 
+## Try it
+
+A read-only demo runs at **https://baby-tracker-demo.fly.dev** (log in with
+the secret `demo` as either Alex or Sam). Everything in it is synthetic and
+regenerated on each deploy; logging, uploads and export are disabled there.
+
 ## Screenshots
 
 > **All screenshots are anonymized.** Every name, date, measurement and photo
@@ -106,6 +112,16 @@ icon.)
 Configuration is read from `.env`; `.env.example` documents every key, and the
 table at the bottom of this file has the full reference. The default login
 secret in dev is `baby`.
+
+### Continuous integration
+
+Every pull request runs `npm test` (GitHub Actions, Node 22) and gets one
+automated comment from Claude listing any README, CLAUDE.md, `.env.example`,
+`fly.toml.example` or `docs/` statement the change made stale. The comment
+job is read-only and never pushes. Neither job runs on draft PRs or on PRs
+from forks; fork contributors should run `npm test` locally. Tagging `v*`
+publishes the container image to GitHub Container Registry
+(`.github/workflows/publish-image.yml`).
 
 ### Demo data (for screenshots)
 
