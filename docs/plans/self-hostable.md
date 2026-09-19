@@ -20,7 +20,7 @@ need to change; the remaining work is packaging, trust signals and docs.
 - First boot needed manual steps (`npm run make-icons`, VAPID key
   generation). **Done** in #25: both were already automatic; docs fixed,
   startup banner added, production refuses the default secret.
-- No tests, no CI. **Done** in #22 (70-test API suite, CI on every PR) and
+- No tests, no CI. **Done** in #22 (98-test API suite, CI on every PR) and
   #24 (per-PR docs-accuracy check).
 - README described the newborn-era app. **Done**: text in #23, fresh
   screenshots, CHANGELOG and the `v1.0.0` tag in the release PR.
