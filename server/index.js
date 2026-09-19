@@ -81,6 +81,26 @@ if (DEMO_MODE) {
   })
 }
 
+// --- demo seed ---
+//
+// A demo instance fills itself with synthetic data, so no real data directory
+// is ever copied to a public box. First boot (empty events table) seeds;
+// DEMO_RESEED=1 wipes and re-seeds on every boot so "today" stays current.
+// Never runs unless DEMO_MODE is on, whatever other flags say.
+let demoSeeded = 0
+if (DEMO_MODE) {
+  if (!process.env.BIRTH_DATE || Number.isNaN(Date.parse(process.env.BIRTH_DATE))) {
+    console.error('baby-tracker refused to start: DEMO_MODE needs BIRTH_DATE (YYYY-MM-DD) to generate demo data.')
+    process.exit(1)
+  }
+  const { seedDemo, wipeForReseed } = await import('./demo-seed.js')
+  const reseed = ['1', 'true'].includes(String(process.env.DEMO_RESEED || '').toLowerCase())
+  if (reseed) wipeForReseed({ db, photosDir: PHOTOS_DIR })
+  if (db.prepare('SELECT count(*) c FROM events').get().c === 0) {
+    demoSeeded = await seedDemo({ db, photosDir: PHOTOS_DIR, birth: process.env.BIRTH_DATE, now: new Date() })
+  }
+}
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/') || req.path === '/api/health') return next()
   const started = process.hrtime.bigint()
@@ -1154,6 +1174,7 @@ const server = app.listen(PORT, () =>
     appName: process.env.APP_NAME || process.env.BABY_NAME || 'Baby Tracker',
     vapidSource,
     demo: DEMO_MODE,
+    demoSeeded,
   })
 )
 // No push surface in the demo: nothing to nudge, nobody subscribed.
